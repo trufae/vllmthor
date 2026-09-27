@@ -1,4 +1,4 @@
-# Qwen3.8 on Jetson AGX Thor
+# Optimized vLLM models on Jetson AGX Thor
 
 This repository starts a local, OpenAI-compatible [vLLM](https://docs.vllm.ai/)
 server on a Jetson AGX Thor. The default setup is tuned for interactive coding
@@ -15,13 +15,28 @@ The server is exposed as `qwen38` at `http://localhost:8000/v1`. Models are
 stored in the host Hugging Face cache, so they do not need to be downloaded on
 every start.
 
-Three entry points share the setup, download, and Docker logic in `run.sh`:
+Six launchers share the setup, download, and Docker logic in `run.sh`:
 
-| Launcher | Model | API model name |
-| --- | --- | --- |
-| `./run.sh` | Qwen3.8-27B NVFP4 + DFlash2 | `qwen38` |
-| `./run-nemotron.sh` | NVIDIA Nemotron Nano 9B v2 NVFP4 | `nemotron` |
-| `./run-glm45air.sh` | GLM-4.5-Air NVFP4 (experimental) | `glm-4.5-air` |
+| Launcher | Model | Model download | Published output speed | API model name |
+| --- | --- | ---: | ---: | --- |
+| `./run.sh` | Qwen3.8-27B NVFP4 + DFlash2 | 26.4 + 3.85 = **30.3 GB** | **27.69–34.44 tok/s** | `qwen38` |
+| `./run-qwen38.sh` | Qwen3.8-27B NVFP4 + DFlash2 | 26.4 + 3.85 = **30.3 GB** | **27.69–34.44 tok/s** | `qwen38` |
+| `./run-qwen36.sh` | Qwen3.6-35B-A3B NVFP4 + DFlash | 23.5 + 0.77 = **24.3 GB** | **116.5 average; 139.1 peak tok/s** | `qwen36` |
+| `./run-nemotron.sh` | Nemotron Nano 9B v2 NVFP4 | **7.85 GB** | **30 tok/s** | `nemotron` |
+| `./run-nemotron-lightning.sh` | Nemotron 3.5 Lightning NVFP4 + DSpark | 21.6 + 1.35 = **23.0 GB** | **123.01–138.02 tok/s** | `nemotron35` |
+| `./run-glm45air.sh` | GLM-4.5-Air NVFP4 (experimental) | **62 GB** | Not published for Thor | `glm-4.5-air` |
+
+Sizes are Hugging Face repository download sizes in decimal GB; values after a
+plus sign are separate speculative-draft checkpoints. They exclude the Docker
+image, Hugging Face/Xet bookkeeping, KV cache, CUDA graphs, and other runtime
+memory. Leave additional storage and unified-memory headroom.
+
+The speed figures are published output/decode results, not a single controlled
+comparison. Qwen3.8 and Lightning are NVIDIA Jetson workload ranges. Qwen3.6
+is a community single-Thor, 120 W, concurrency-1 coding average and peak.
+Nemotron Nano is NVIDIA's Thor T5000 vLLM result at concurrency 1. Prompt
+length, output length, power mode, software version, and speculative-token
+acceptance can materially change these numbers.
 
 ## Requirements
 
@@ -43,7 +58,8 @@ docker info | grep -i nvidia
 Make the launcher and cleaner scripts executable once:
 
 ```bash
-chmod +x run.sh run-nemotron.sh run-glm45air.sh clean.sh
+chmod +x run.sh run-qwen38.sh run-qwen36.sh run-nemotron.sh \
+  run-nemotron-lightning.sh run-glm45air.sh clean.sh
 ```
 
 Start the server:
@@ -111,7 +127,9 @@ removes the configured vLLM image, even if another project uses that image tag.
 Select the matching profile when cleaning an alternative model:
 
 ```bash
+MODEL_PROFILE=qwen36 ./clean.sh
 MODEL_PROFILE=nemotron ./clean.sh
+MODEL_PROFILE=nemotron35 ./clean.sh
 MODEL_PROFILE=glm45air ./clean.sh
 ```
 
@@ -128,12 +146,12 @@ CONTAINER_NAME=custom-vllm \
 
 ## Configuration
 
-All three launchers accept these environment variables. The small alternative
+All six launchers accept these environment variables. The small alternative
 launchers select `MODEL_PROFILE` and then execute `run.sh`:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `MODEL_PROFILE` | `qwen` | Internal profile: `qwen`, `nemotron`, or `glm45air` |
+| `MODEL_PROFILE` | `qwen` | Internal profile: `qwen`, `qwen36`, `nemotron`, `nemotron35`, or `glm45air` |
 | `VLLM_IMAGE` | `vllm/vllm-openai:v0.28.0` | Docker image to pull and run |
 | `MODEL` | `Inferact/Qwen3.8-27B-NVFP4` | Hugging Face target model |
 | `DRAFT_MODEL` | `incoai/Qwen3.8-27B-DFlash2` | Matching DFlash2 draft model |
@@ -146,9 +164,9 @@ launchers select `MODEL_PROFILE` and then execute `run.sh`:
 | `HF_TOKEN` | empty | Optional Hugging Face access token |
 | `CONTAINER_NAME` | profile-specific | Docker container name |
 
-The table shows Qwen defaults. Nemotron and GLM select their own model, image,
-context, concurrency, memory, API name, and container defaults before applying
-any explicit environment overrides.
+The table shows Qwen3.8 defaults. Each other profile selects its own model,
+draft, image, context, concurrency, memory, API name, and container defaults
+before applying any explicit environment overrides.
 
 Multiple overrides can be combined on one command:
 
@@ -273,7 +291,57 @@ MODEL=nvidia/Qwen3.8-27B-NVFP4 ./clean.sh
 Quantized checkpoints can differ in kernel coverage and output quality, so
 compare correctness and throughput before replacing the default permanently.
 
-### Nemotron: the safest alternative family for Thor
+### Qwen3.6-35B-A3B with DFlash
+
+The Qwen3.6 launcher uses NVIDIA's NVFP4 checkpoint and the matching Z-Lab
+DFlash draft. Its Thor defaults follow the proven low-concurrency setup:
+Marlin MoE, FlashAttention, a 65K context, four sequences, and 12 speculative
+tokens. The draft path intentionally keeps the KV cache at `auto`; quantized
+draft KV has caused compatibility failures in tested DFlash builds.
+
+```bash
+./run-qwen36.sh
+```
+
+It is configured for text-only serving even though the target checkpoint also
+contains vision support. On a single 120 W Thor, the source configuration
+measured 116.5 output tokens/s averaged across four coding workloads and a
+139.1 tokens/s peak. DFlash support and Thor kernels evolve quickly, so keep
+the vLLM image version pinned when comparing results.
+
+Clean the target model, DFlash draft, container, and shared image with:
+
+```bash
+MODEL_PROFILE=qwen36 ./clean.sh
+```
+
+### Nemotron 3.5 Lightning with DSpark
+
+The Lightning launcher follows NVIDIA's Jetson recipe: NVFP4 target and
+matching DSpark draft, FP8 KV cache, Marlin MoE, FlashInfer Mamba, stochastic
+rounding, and the Nemotron reasoning parser. The defaults reserve 70% of
+unified memory and expose a 128K context with four sequences.
+
+```bash
+./run-nemotron-lightning.sh
+```
+
+NVIDIA measured 123.01–138.02 output tokens/s across representative Jetson
+writing, reasoning, summarization, and RAG workloads with this DSpark path.
+For a lighter interactive setup, reduce context and concurrency without
+changing the matched draft:
+
+```bash
+MAX_MODEL_LEN=65536 MAX_NUM_SEQS=1 ./run-nemotron-lightning.sh
+```
+
+Clean both Lightning checkpoints afterward with:
+
+```bash
+MODEL_PROFILE=nemotron35 ./clean.sh
+```
+
+### Nemotron Nano: the smaller alternative
 
 `nvidia/NVIDIA-Nemotron-Nano-9B-v2-NVFP4` is a 128K reasoning/chat model whose
 official model card explicitly lists Jetson AGX Thor as tested hardware. It is
@@ -369,7 +437,13 @@ du -sh "${HF_CACHE:-$HOME/.cache/huggingface}"
 - [Default Qwen3.8 NVFP4 checkpoint](https://huggingface.co/Inferact/Qwen3.8-27B-NVFP4)
 - [NVIDIA Qwen3.8 NVFP4 checkpoint](https://huggingface.co/nvidia/Qwen3.8-27B-NVFP4)
 - [Qwen3.8 DFlash2 draft model](https://huggingface.co/incoai/Qwen3.8-27B-DFlash2)
+- [NVIDIA Qwen3.6-35B-A3B NVFP4](https://huggingface.co/nvidia/Qwen3.6-35B-A3B-NVFP4)
+- [Qwen3.6-35B-A3B DFlash draft](https://huggingface.co/z-lab/Qwen3.6-35B-A3B-DFlash)
+- [Thor Qwen3.6 DFlash deployment notes and benchmarks](https://huggingface.co/patrickbdevaney/qwen-3.6-35b-a3b-dflash-jetson-agx-thor)
 - [NVIDIA Nemotron Nano 9B v2 NVFP4](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2-NVFP4)
+- [Jetson AI Lab benchmark data](https://github.com/NVIDIA-AI-IOT/jetson-ai-lab/blob/main/src/data/benchmarks.json)
+- [NVIDIA Nemotron 3.5 Lightning NVFP4](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4)
+- [NVIDIA Jetson reasoning-model deployment guide](https://developer.nvidia.com/blog/frontier-reasoning-reaches-the-edge-how-to-deploy-and-optimize-models-on-nvidia-jetson/)
 - [Experimental GLM-4.5-Air NVFP4 checkpoint](https://huggingface.co/Firworks/GLM-4.5-Air-nvfp4)
 
 Alternative-model notes were last checked on 2026-09-27. Model cards and vLLM

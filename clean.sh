@@ -3,7 +3,9 @@
 # Remove the containers, image, and caches created by run.sh.
 #
 # Select the same profile used to start the server:
+#   MODEL_PROFILE=qwen36 ./clean.sh
 #   MODEL_PROFILE=nemotron ./clean.sh
+#   MODEL_PROFILE=nemotron35 ./clean.sh
 #   MODEL_PROFILE=glm45air ./clean.sh
 #
 # The Hugging Face Xet cache is shared between repositories. It is removed by
@@ -21,11 +23,23 @@ case "$MODEL_PROFILE" in
 		DEFAULT_DRAFT_MODEL="incoai/Qwen3.8-27B-DFlash2"
 		DEFAULT_CONTAINER_NAME="qwen38-vllm"
 		;;
+	qwen36)
+		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_MODEL="nvidia/Qwen3.6-35B-A3B-NVFP4"
+		DEFAULT_DRAFT_MODEL="z-lab/Qwen3.6-35B-A3B-DFlash"
+		DEFAULT_CONTAINER_NAME="qwen36-vllm"
+		;;
 	nemotron)
 		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:v0.28.0"
 		DEFAULT_MODEL="nvidia/NVIDIA-Nemotron-Nano-9B-v2-NVFP4"
 		DEFAULT_DRAFT_MODEL=""
 		DEFAULT_CONTAINER_NAME="nemotron-vllm"
+		;;
+	nemotron35)
+		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_MODEL="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4"
+		DEFAULT_DRAFT_MODEL="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark"
+		DEFAULT_CONTAINER_NAME="nemotron35-vllm"
 		;;
 	glm45air)
 		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:nightly"
@@ -35,7 +49,7 @@ case "$MODEL_PROFILE" in
 		;;
 	*)
 		echo "Unknown MODEL_PROFILE: $MODEL_PROFILE" >&2
-		echo "Expected one of: qwen, nemotron, glm45air" >&2
+		echo "Expected one of: qwen, qwen36, nemotron, nemotron35, glm45air" >&2
 		exit 1
 		;;
 esac

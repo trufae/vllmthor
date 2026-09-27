@@ -4,12 +4,16 @@
 #
 # Profiles:
 #   qwen       Qwen3.8-27B NVFP4 + DFlash2 (default)
+#   qwen36     Qwen3.6-35B-A3B NVFP4 + DFlash
 #   nemotron   NVIDIA Nemotron Nano 9B v2 NVFP4
+#   nemotron35 NVIDIA Nemotron 3.5 Lightning NVFP4 + DSpark
 #   glm45air   GLM-4.5-Air NVFP4 (experimental on Thor)
 #
 # The profile wrappers are the easiest entry points:
 #   ./run.sh
+#   ./run-qwen36.sh
 #   ./run-nemotron.sh
+#   ./run-nemotron-lightning.sh
 #   ./run-glm45air.sh
 
 set -euo pipefail
@@ -28,6 +32,17 @@ case "$MODEL_PROFILE" in
 		DEFAULT_CONTAINER_NAME="qwen38-vllm"
 		PROFILE_TITLE="Qwen3.8-27B NVFP4 + DFlash2"
 		;;
+	qwen36)
+		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_MODEL="nvidia/Qwen3.6-35B-A3B-NVFP4"
+		DEFAULT_DRAFT_MODEL="z-lab/Qwen3.6-35B-A3B-DFlash"
+		DEFAULT_SERVED_MODEL="qwen36"
+		DEFAULT_MAX_MODEL_LEN="65536"
+		DEFAULT_GPU_MEMORY_UTILIZATION="0.78"
+		DEFAULT_MAX_NUM_SEQS="4"
+		DEFAULT_CONTAINER_NAME="qwen36-vllm"
+		PROFILE_TITLE="Qwen3.6-35B-A3B NVFP4 + DFlash"
+		;;
 	nemotron)
 		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:v0.28.0"
 		DEFAULT_MODEL="nvidia/NVIDIA-Nemotron-Nano-9B-v2-NVFP4"
@@ -38,6 +53,17 @@ case "$MODEL_PROFILE" in
 		DEFAULT_MAX_NUM_SEQS="4"
 		DEFAULT_CONTAINER_NAME="nemotron-vllm"
 		PROFILE_TITLE="NVIDIA Nemotron Nano NVFP4"
+		;;
+	nemotron35)
+		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_MODEL="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4"
+		DEFAULT_DRAFT_MODEL="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark"
+		DEFAULT_SERVED_MODEL="nemotron35"
+		DEFAULT_MAX_MODEL_LEN="128000"
+		DEFAULT_GPU_MEMORY_UTILIZATION="0.70"
+		DEFAULT_MAX_NUM_SEQS="4"
+		DEFAULT_CONTAINER_NAME="nemotron35-vllm"
+		PROFILE_TITLE="NVIDIA Nemotron 3.5 Lightning NVFP4 + DSpark"
 		;;
 	glm45air)
 		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:nightly"
@@ -52,7 +78,7 @@ case "$MODEL_PROFILE" in
 		;;
 	*)
 		echo "Unknown MODEL_PROFILE: $MODEL_PROFILE" >&2
-		echo "Expected one of: qwen, nemotron, glm45air" >&2
+		echo "Expected one of: qwen, qwen36, nemotron, nemotron35, glm45air" >&2
 		exit 1
 		;;
 esac
@@ -79,8 +105,8 @@ if [ -n "$DRAFT_MODEL" ] &&
 	echo "Unsupported Hugging Face draft model ID: $DRAFT_MODEL" >&2
 	exit 1
 fi
-if [ "$MODEL_PROFILE" = "qwen" ] && [ -z "$DRAFT_MODEL" ]; then
-	echo "The qwen profile requires a matching DRAFT_MODEL." >&2
+if [[ "$MODEL_PROFILE" =~ ^(qwen|qwen36|nemotron35)$ ]] && [ -z "$DRAFT_MODEL" ]; then
+	echo "The $MODEL_PROFILE profile requires a matching DRAFT_MODEL." >&2
 	exit 1
 fi
 
@@ -112,9 +138,46 @@ case "$MODEL_PROFILE" in
 			"{\"method\":\"dflash\",\"model\":\"$DRAFT_MODEL\",\"num_speculative_tokens\":7}"
 		)
 		;;
+	qwen36)
+		# Thor's SM110a does not have a FlashInfer FP4 MoE kernel. Marlin is
+		# the fastest proven backend for this 256-expert checkpoint.
+		container_env+=(
+			-e VLLM_USE_FLASHINFER_MOE_FP4=0
+			-e LD_PRELOAD=/usr/lib/aarch64-linux-gnu/nvidia/libcuda.so.1
+		)
+		model_args+=(
+			--quantization modelopt
+			--kv-cache-dtype auto
+			--language-model-only
+			--attention-backend flash_attn
+			--moe-backend marlin
+			--reasoning-parser qwen3
+			--enable-auto-tool-choice
+			--tool-call-parser qwen3_xml
+			--speculative-config
+			"{\"method\":\"dflash\",\"model\":\"$DRAFT_MODEL\",\"num_speculative_tokens\":12}"
+		)
+		;;
 	nemotron)
 		# NVIDIA specifies float32 here to avoid degrading model quality.
 		model_args+=(--mamba_ssm_cache_dtype float32)
+		;;
+	nemotron35)
+		model_args+=(
+			--kv-cache-dtype fp8
+			--max-num-batched-tokens 16384
+			--moe-backend marlin
+			--reasoning-parser nemotron_v3
+			--enable-auto-tool-choice
+			--tool-call-parser qwen3_coder
+			--speculative-config
+			"{\"method\":\"dspark\",\"model\":\"$DRAFT_MODEL\",\"num_speculative_tokens\":5}"
+			--mamba-backend flashinfer
+			--mamba-ssm-cache-dtype float16
+			--enable-mamba-cache-stochastic-rounding
+			--mamba-cache-philox-rounds 5
+			--mamba-cache-mode align
+		)
 		;;
 	glm45air)
 		container_env+=(-e VLLM_USE_FLASHINFER_MOE_FP4=1)
