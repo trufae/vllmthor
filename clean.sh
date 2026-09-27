@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 #
-# Remove the containers, image, and caches created by run.sh.
+# Remove the container, server image, and caches created by run.sh.
 #
 # Select the same profile used to start the server:
 #   MODEL_PROFILE=qwen36 ./clean.sh
 #   MODEL_PROFILE=nemotron ./clean.sh
 #   MODEL_PROFILE=nemotron35 ./clean.sh
 #   MODEL_PROFILE=glm45air ./clean.sh
+#   MODEL_PROFILE=gemma4 ./clean.sh
+#   MODEL_PROFILE=glm47flash ./clean.sh
+#   MODEL_PROFILE=muse ./clean.sh
 #
 # The Hugging Face Xet cache is shared between repositories. It is removed by
 # default because run.sh can populate it. Set KEEP_XET_CACHE=1 to preserve it.
@@ -18,43 +21,62 @@ MODEL_PROFILE="${MODEL_PROFILE:-qwen}"
 
 case "$MODEL_PROFILE" in
 	qwen)
-		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
 		DEFAULT_MODEL="Inferact/Qwen3.8-27B-NVFP4"
 		DEFAULT_DRAFT_MODEL="incoai/Qwen3.8-27B-DFlash2"
 		DEFAULT_CONTAINER_NAME="qwen38-vllm"
 		;;
 	qwen36)
-		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
 		DEFAULT_MODEL="nvidia/Qwen3.6-35B-A3B-NVFP4"
 		DEFAULT_DRAFT_MODEL="z-lab/Qwen3.6-35B-A3B-DFlash"
 		DEFAULT_CONTAINER_NAME="qwen36-vllm"
 		;;
 	nemotron)
-		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
 		DEFAULT_MODEL="nvidia/NVIDIA-Nemotron-Nano-9B-v2-NVFP4"
 		DEFAULT_DRAFT_MODEL=""
 		DEFAULT_CONTAINER_NAME="nemotron-vllm"
 		;;
 	nemotron35)
-		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
 		DEFAULT_MODEL="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4"
 		DEFAULT_DRAFT_MODEL="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark"
 		DEFAULT_CONTAINER_NAME="nemotron35-vllm"
 		;;
 	glm45air)
-		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:nightly"
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:nightly"
 		DEFAULT_MODEL="Firworks/GLM-4.5-Air-nvfp4"
 		DEFAULT_DRAFT_MODEL=""
 		DEFAULT_CONTAINER_NAME="glm45air-vllm"
 		;;
+	gemma4)
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.24.0"
+		DEFAULT_MODEL="RedHatAI/gemma-4-26B-A4B-it-NVFP4"
+		DEFAULT_DRAFT_MODEL="google/gemma-4-26B-A4B-it-assistant"
+		DEFAULT_CONTAINER_NAME="gemma4-vllm"
+		;;
+	glm47flash)
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_MODEL="GadflyII/GLM-4.7-Flash-NVFP4"
+		DEFAULT_DRAFT_MODEL=""
+		DEFAULT_CONTAINER_NAME="glm47flash-vllm"
+		;;
+	muse)
+		DEFAULT_SERVER_IMAGE="ghcr.io/nvidia-ai-iot/llama_cpp:latest-jetson-thor"
+		DEFAULT_MODEL="meta-models/Muse-Glimmer-30B-GGUF"
+		DEFAULT_DRAFT_MODEL=""
+		DEFAULT_CONTAINER_NAME="muse-glimmer-llama"
+		;;
 	*)
 		echo "Unknown MODEL_PROFILE: $MODEL_PROFILE" >&2
-		echo "Expected one of: qwen, qwen36, nemotron, nemotron35, glm45air" >&2
+		echo "Expected one of: qwen, qwen36, nemotron, nemotron35, glm45air, gemma4, glm47flash, muse" >&2
 		exit 1
 		;;
 esac
 
-VLLM_IMAGE="${VLLM_IMAGE:-$DEFAULT_VLLM_IMAGE}"
+# VLLM_IMAGE remains a backwards-compatible alias for SERVER_IMAGE.
+SERVER_IMAGE="${SERVER_IMAGE:-${VLLM_IMAGE:-$DEFAULT_SERVER_IMAGE}}"
 MODEL="${MODEL:-$DEFAULT_MODEL}"
 DRAFT_MODEL="${DRAFT_MODEL-$DEFAULT_DRAFT_MODEL}"
 
@@ -130,13 +152,13 @@ remove_empty_python_package() {
 	fi
 }
 
-echo "==> Removing the vLLM container and image..."
+echo "==> Removing the model-server container and image..."
 
 if ! command -v docker >/dev/null 2>&1; then
-	echo "ERROR: Docker is not installed; cannot remove $VLLM_IMAGE." >&2
+	echo "ERROR: Docker is not installed; cannot remove $SERVER_IMAGE." >&2
 	failures=$((failures + 1))
 elif ! docker info >/dev/null 2>&1; then
-	echo "ERROR: cannot connect to Docker; cannot remove $VLLM_IMAGE." >&2
+	echo "ERROR: cannot connect to Docker; cannot remove $SERVER_IMAGE." >&2
 	failures=$((failures + 1))
 else
 	if docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
@@ -148,13 +170,13 @@ else
 		echo "==> Container already absent: $CONTAINER_NAME"
 	fi
 
-	if docker image inspect "$VLLM_IMAGE" >/dev/null 2>&1; then
-		if ! docker image rm --force "$VLLM_IMAGE"; then
-			echo "ERROR: could not remove image $VLLM_IMAGE." >&2
+	if docker image inspect "$SERVER_IMAGE" >/dev/null 2>&1; then
+		if ! docker image rm --force "$SERVER_IMAGE"; then
+			echo "ERROR: could not remove image $SERVER_IMAGE." >&2
 			failures=$((failures + 1))
 		fi
 	else
-		echo "==> Image already absent: $VLLM_IMAGE"
+		echo "==> Image already absent: $SERVER_IMAGE"
 	fi
 fi
 

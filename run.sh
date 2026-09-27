@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Serve an optimized language model on Jetson AGX Thor through vLLM.
+# Serve an optimized language model on Jetson AGX Thor through vLLM or llama.cpp.
 #
 # Profiles:
 #   qwen       Qwen3.8-27B NVFP4 + DFlash2 (default)
@@ -8,6 +8,9 @@
 #   nemotron   NVIDIA Nemotron Nano 9B v2 NVFP4
 #   nemotron35 NVIDIA Nemotron 3.5 Lightning NVFP4 + DSpark
 #   glm45air   GLM-4.5-Air NVFP4 (experimental on Thor)
+#   gemma4     Gemma 4 26B-A4B NVFP4 + MTP
+#   glm47flash GLM-4.7-Flash NVFP4 (experimental on Thor)
+#   muse       Muse Glimmer 30B K-Quant + DFlash (llama.cpp)
 #
 # The profile wrappers are the easiest entry points:
 #   ./run.sh
@@ -15,6 +18,9 @@
 #   ./run-nemotron.sh
 #   ./run-nemotron-lightning.sh
 #   ./run-glm45air.sh
+#   ./run-gemma4.sh
+#   ./run-glm47flash.sh
+#   ./run-muse-glimmer.sh
 
 set -euo pipefail
 
@@ -22,7 +28,8 @@ MODEL_PROFILE="${MODEL_PROFILE:-qwen}"
 
 case "$MODEL_PROFILE" in
 	qwen)
-		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_ENGINE="vllm"
 		DEFAULT_MODEL="Inferact/Qwen3.8-27B-NVFP4"
 		DEFAULT_DRAFT_MODEL="incoai/Qwen3.8-27B-DFlash2"
 		DEFAULT_SERVED_MODEL="qwen38"
@@ -33,7 +40,8 @@ case "$MODEL_PROFILE" in
 		PROFILE_TITLE="Qwen3.8-27B NVFP4 + DFlash2"
 		;;
 	qwen36)
-		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_ENGINE="vllm"
 		DEFAULT_MODEL="nvidia/Qwen3.6-35B-A3B-NVFP4"
 		DEFAULT_DRAFT_MODEL="z-lab/Qwen3.6-35B-A3B-DFlash"
 		DEFAULT_SERVED_MODEL="qwen36"
@@ -44,7 +52,8 @@ case "$MODEL_PROFILE" in
 		PROFILE_TITLE="Qwen3.6-35B-A3B NVFP4 + DFlash"
 		;;
 	nemotron)
-		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_ENGINE="vllm"
 		DEFAULT_MODEL="nvidia/NVIDIA-Nemotron-Nano-9B-v2-NVFP4"
 		DEFAULT_DRAFT_MODEL=""
 		DEFAULT_SERVED_MODEL="nemotron"
@@ -55,7 +64,8 @@ case "$MODEL_PROFILE" in
 		PROFILE_TITLE="NVIDIA Nemotron Nano NVFP4"
 		;;
 	nemotron35)
-		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_ENGINE="vllm"
 		DEFAULT_MODEL="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4"
 		DEFAULT_DRAFT_MODEL="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark"
 		DEFAULT_SERVED_MODEL="nemotron35"
@@ -66,7 +76,8 @@ case "$MODEL_PROFILE" in
 		PROFILE_TITLE="NVIDIA Nemotron 3.5 Lightning NVFP4 + DSpark"
 		;;
 	glm45air)
-		DEFAULT_VLLM_IMAGE="vllm/vllm-openai:nightly"
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:nightly"
+		DEFAULT_ENGINE="vllm"
 		DEFAULT_MODEL="Firworks/GLM-4.5-Air-nvfp4"
 		DEFAULT_DRAFT_MODEL=""
 		DEFAULT_SERVED_MODEL="glm-4.5-air"
@@ -76,14 +87,52 @@ case "$MODEL_PROFILE" in
 		DEFAULT_CONTAINER_NAME="glm45air-vllm"
 		PROFILE_TITLE="GLM-4.5-Air NVFP4 (experimental)"
 		;;
+	gemma4)
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.24.0"
+		DEFAULT_ENGINE="vllm"
+		DEFAULT_MODEL="RedHatAI/gemma-4-26B-A4B-it-NVFP4"
+		DEFAULT_DRAFT_MODEL="google/gemma-4-26B-A4B-it-assistant"
+		DEFAULT_SERVED_MODEL="gemma4"
+		DEFAULT_MAX_MODEL_LEN="8192"
+		DEFAULT_GPU_MEMORY_UTILIZATION="0.70"
+		DEFAULT_MAX_NUM_SEQS="4"
+		DEFAULT_CONTAINER_NAME="gemma4-vllm"
+		PROFILE_TITLE="Gemma 4 26B-A4B NVFP4 + MTP"
+		;;
+	glm47flash)
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_ENGINE="vllm"
+		DEFAULT_MODEL="GadflyII/GLM-4.7-Flash-NVFP4"
+		DEFAULT_DRAFT_MODEL=""
+		DEFAULT_SERVED_MODEL="glm-4.7-flash"
+		DEFAULT_MAX_MODEL_LEN="32768"
+		DEFAULT_GPU_MEMORY_UTILIZATION="0.60"
+		DEFAULT_MAX_NUM_SEQS="4"
+		DEFAULT_CONTAINER_NAME="glm47flash-vllm"
+		PROFILE_TITLE="GLM-4.7-Flash NVFP4 (experimental)"
+		;;
+	muse)
+		DEFAULT_SERVER_IMAGE="ghcr.io/nvidia-ai-iot/llama_cpp:latest-jetson-thor"
+		DEFAULT_ENGINE="llama.cpp"
+		DEFAULT_MODEL="meta-models/Muse-Glimmer-30B-GGUF"
+		DEFAULT_DRAFT_MODEL=""
+		DEFAULT_SERVED_MODEL="muse-glimmer-30B"
+		DEFAULT_MAX_MODEL_LEN="131072"
+		DEFAULT_GPU_MEMORY_UTILIZATION=""
+		DEFAULT_MAX_NUM_SEQS="1"
+		DEFAULT_CONTAINER_NAME="muse-glimmer-llama"
+		PROFILE_TITLE="Muse Glimmer 30B K-Quant + DFlash"
+		;;
 	*)
 		echo "Unknown MODEL_PROFILE: $MODEL_PROFILE" >&2
-		echo "Expected one of: qwen, qwen36, nemotron, nemotron35, glm45air" >&2
+		echo "Expected one of: qwen, qwen36, nemotron, nemotron35, glm45air, gemma4, glm47flash, muse" >&2
 		exit 1
 		;;
 esac
 
-VLLM_IMAGE="${VLLM_IMAGE:-$DEFAULT_VLLM_IMAGE}"
+# VLLM_IMAGE remains a backwards-compatible alias for SERVER_IMAGE.
+SERVER_IMAGE="${SERVER_IMAGE:-${VLLM_IMAGE:-$DEFAULT_SERVER_IMAGE}}"
+ENGINE="$DEFAULT_ENGINE"
 MODEL="${MODEL:-$DEFAULT_MODEL}"
 DRAFT_MODEL="${DRAFT_MODEL-$DEFAULT_DRAFT_MODEL}"
 SERVED_MODEL="${SERVED_MODEL:-$DEFAULT_SERVED_MODEL}"
@@ -105,7 +154,7 @@ if [ -n "$DRAFT_MODEL" ] &&
 	echo "Unsupported Hugging Face draft model ID: $DRAFT_MODEL" >&2
 	exit 1
 fi
-if [[ "$MODEL_PROFILE" =~ ^(qwen|qwen36|nemotron35)$ ]] && [ -z "$DRAFT_MODEL" ]; then
+if [[ "$MODEL_PROFILE" =~ ^(qwen|qwen36|nemotron35|gemma4)$ ]] && [ -z "$DRAFT_MODEL" ]; then
 	echo "The $MODEL_PROFILE profile requires a matching DRAFT_MODEL." >&2
 	exit 1
 fi
@@ -189,6 +238,33 @@ case "$MODEL_PROFILE" in
 			--enable-auto-tool-choice
 		)
 		;;
+	gemma4)
+		model_args+=(
+			--reasoning-parser gemma4
+			--enable-auto-tool-choice
+			--tool-call-parser gemma4
+			--default-chat-template-kwargs '{"enable_thinking":true}'
+			--speculative-config
+			"{\"method\":\"mtp\",\"model\":\"$DRAFT_MODEL\",\"num_speculative_tokens\":3}"
+		)
+		;;
+	glm47flash)
+		# This community mixed-precision checkpoint is Blackwell-compatible,
+		# but has not been benchmarked on Thor. Avoid the unsupported SM110a
+		# FlashInfer FP4 MoE path and let vLLM use its fallback kernels.
+		container_env+=(-e VLLM_USE_FLASHINFER_MOE_FP4=0)
+		model_args+=(
+			--dtype auto
+			--reasoning-parser glm45
+			--tool-call-parser glm47
+			--enable-auto-tool-choice
+			--speculative-config
+			'{"method":"mtp","num_speculative_tokens":1}'
+		)
+		;;
+	muse)
+		# Muse is started below with NVIDIA's Thor llama.cpp container.
+		;;
 esac
 
 echo "==> Checking architecture..."
@@ -231,19 +307,20 @@ echo "==> Hugging Face cache:"
 echo "    $HF_CACHE"
 
 echo
-echo "==> Pulling vLLM $VLLM_IMAGE..."
-docker pull "$VLLM_IMAGE"
+echo "==> Pulling $ENGINE server image $SERVER_IMAGE..."
+docker pull "$SERVER_IMAGE"
 
 echo
-echo "==> Checking CUDA from inside the vLLM container..."
+if [ "$ENGINE" = "vllm" ]; then
+	echo "==> Checking CUDA from inside the vLLM container..."
 
-docker run --rm \
-	--runtime nvidia \
-	--network host \
-	--ipc=host \
-	--entrypoint python3 \
-	"$VLLM_IMAGE" \
-	-c '
+	docker run --rm \
+		--runtime nvidia \
+		--network host \
+		--ipc=host \
+		--entrypoint python3 \
+		"$SERVER_IMAGE" \
+		-c '
 import torch
 print("PyTorch:", torch.__version__)
 print("CUDA available:", torch.cuda.is_available())
@@ -251,6 +328,14 @@ if torch.cuda.is_available():
     print("CUDA:", torch.version.cuda)
     print("GPU:", torch.cuda.get_device_name(0))
 '
+else
+	echo "==> Checking the llama.cpp build..."
+	docker run --rm \
+		--runtime nvidia \
+		--entrypoint llama-server \
+		"$SERVER_IMAGE" \
+		--version
+fi
 
 download_model() {
 	local description="$1"
@@ -267,7 +352,7 @@ download_model() {
 		-e HF_TOKEN="${HF_TOKEN:-}" \
 		-e MODEL_ID="$model_id" \
 		--entrypoint python3 \
-		"$VLLM_IMAGE" \
+		"$SERVER_IMAGE" \
 		-c '
 import os
 from huggingface_hub import snapshot_download
@@ -275,9 +360,14 @@ snapshot_download(os.environ["MODEL_ID"])
 '
 }
 
-download_model "target model" "$MODEL"
-if [ -n "$DRAFT_MODEL" ]; then
-	download_model "speculative draft model" "$DRAFT_MODEL"
+if [ "$ENGINE" = "vllm" ]; then
+	download_model "target model" "$MODEL"
+	if [ -n "$DRAFT_MODEL" ]; then
+		download_model "speculative draft model" "$DRAFT_MODEL"
+	fi
+else
+	echo
+	echo "==> llama.cpp will download the selected GGUF and companions on first start."
 fi
 
 echo
@@ -286,13 +376,16 @@ echo " $PROFILE_TITLE / Jetson AGX Thor"
 echo "================================================================"
 echo
 echo " Profile:      $MODEL_PROFILE"
+echo " Engine:       $ENGINE"
 echo " Model:        $MODEL"
 if [ -n "$DRAFT_MODEL" ]; then
 	echo " Draft:        $DRAFT_MODEL"
 fi
 echo " Context:      $MAX_MODEL_LEN"
 echo " Sequences:    $MAX_NUM_SEQS"
-echo " GPU memory:   $GPU_MEMORY_UTILIZATION of total"
+if [ "$ENGINE" = "vllm" ]; then
+	echo " GPU memory:   $GPU_MEMORY_UTILIZATION of total"
+fi
 echo " API:          http://localhost:$PORT/v1"
 echo " Model name:   $SERVED_MODEL"
 echo " Container:    $CONTAINER_NAME"
@@ -301,6 +394,33 @@ echo " Ctrl-C stops the server."
 echo "================================================================"
 echo
 
+if [ "$ENGINE" = "llama.cpp" ]; then
+	exec docker run --rm -it \
+		--name "$CONTAINER_NAME" \
+		--runtime nvidia \
+		--network host \
+		--ipc=host \
+		-v "$HF_CACHE:/root/.cache/huggingface" \
+		-e "HF_TOKEN=${HF_TOKEN:-}" \
+		"$SERVER_IMAGE" \
+		llama-server \
+		-hf "$MODEL" \
+		-hff "${MUSE_MODEL_FILE:-Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf}" \
+		--alias "$SERVED_MODEL" \
+		--spec-type draft-dflash \
+		--n-gpu-layers 999 \
+		--spec-draft-ngl 999 \
+		--ctx-size "$MAX_MODEL_LEN" \
+		--flash-attn on \
+		--parallel "$MAX_NUM_SEQS" \
+		--jinja \
+		--temp 1.0 \
+		--top-p 0.95 \
+		--top-k 64 \
+		--host 0.0.0.0 \
+		--port "$PORT"
+fi
+
 exec docker run --rm -it \
 	--name "$CONTAINER_NAME" \
 	--runtime nvidia \
@@ -308,6 +428,6 @@ exec docker run --rm -it \
 	--ipc=host \
 	-v "$HF_CACHE:/root/.cache/huggingface" \
 	"${container_env[@]}" \
-	"$VLLM_IMAGE" \
+	"$SERVER_IMAGE" \
 	"$MODEL" \
 	"${model_args[@]}"
