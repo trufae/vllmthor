@@ -157,6 +157,55 @@ software version, and speculative-token acceptance all affect performance.
 There is no defensible published Thor result for either GLM profile, so no
 estimate is presented as a benchmark.
 
+## Benchmark script
+
+`bench.sh` sends four sequential chat-completion requests through curl. It
+auto-detects the first model returned by `/v1/models`, performs one warm-up
+request, and reads `usage.prompt_tokens` and `usage.completion_tokens` from
+each response.
+
+```bash
+./bench.sh
+```
+
+The reported rate is:
+
+```text
+completion_tokens / curl time_total
+```
+
+This is end-to-end output throughput. It includes HTTP handling, prompt
+prefill, and generation, so it is more representative of client-observed speed
+than raw decode throughput. The standard OpenAI response provides token counts
+but not a portable per-request decode timer. Using curl timing also keeps the
+script compatible with the llama.cpp Muse profile.
+
+Available overrides:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `BASE_URL` | `http://localhost:8000/v1` | OpenAI-compatible API base URL |
+| `MODEL` | auto-detected | API model name to request |
+| `API_KEY` | empty | Optional bearer token |
+| `RUNS` | `1` | Repetitions of each of the four prompts |
+| `MAX_TOKENS` | `256` | Maximum completion tokens per request |
+| `TEMPERATURE` | `0` | Sampling temperature |
+| `REQUEST_TIMEOUT` | `600` | Curl timeout in seconds |
+| `WARMUP` | `1` | Set to `0` to skip the warm-up request |
+
+Examples:
+
+```bash
+RUNS=3 MAX_TOKENS=512 ./bench.sh
+MODEL=gemma4 ./bench.sh
+BASE_URL=http://192.168.1.20:8000/v1 ./bench.sh
+```
+
+For comparable results, keep power mode, clocks, context size, concurrency,
+and background load constant. The script is sequential and measures
+single-request behavior; it does not measure multi-client aggregate
+throughput.
+
 ## Model-specific notes
 
 ### Qwen3.8-27B

@@ -48,7 +48,7 @@ docker info | grep -i nvidia
 Make the scripts executable once:
 
 ```bash
-chmod +x run*.sh clean.sh
+chmod +x run*.sh clean.sh bench.sh
 ```
 
 Start the default model:
@@ -95,6 +95,28 @@ curl http://localhost:8000/v1/chat/completions \
 
 The API model name changes with the launcher. Query `/v1/models` to see the
 active name.
+
+## Benchmark
+
+With a model server running, execute:
+
+```bash
+./bench.sh
+```
+
+The script discovers the active model, performs a warm-up, runs four chat
+queries, and reports prompt tokens, completion tokens, elapsed time, and output
+tok/s. It uses the token counts returned in the OpenAI `usage` object and
+curl's end-to-end request time.
+
+Run each query twice with longer outputs:
+
+```bash
+RUNS=2 MAX_TOKENS=512 ./bench.sh
+```
+
+See [Benchmark details](ADVANCED.md#benchmark-script) for all options and how
+to interpret the result.
 
 ## Common options
 
