@@ -29,7 +29,8 @@ variables override that profile's defaults:
 | `SERVED_MODEL` | `qwen38` | Model name exposed by the API |
 | `MAX_MODEL_LEN` | `131072` | Combined prompt and output-token limit |
 | `GPU_MEMORY_UTILIZATION` | `0.35` | Unified-memory fraction available to vLLM |
-| `MAX_NUM_SEQS` | `4` | Maximum sequences processed together |
+| `MAX_CONCURRENT_REQUESTS` | `4` | Active generation slots (`--max-num-seqs`) |
+| `MAX_NUM_SEQS` | unset | Backwards-compatible alias for `MAX_CONCURRENT_REQUESTS` |
 | `PORT` | `8000` | OpenAI-compatible API port |
 | `HF_CACHE` | `$HOME/.cache/huggingface` | Host model-cache directory |
 | `HF_TOKEN` | empty | Optional Hugging Face access token |
@@ -45,7 +46,7 @@ alias for `SERVER_IMAGE`.
 Multiple overrides can be combined:
 
 ```bash
-MAX_MODEL_LEN=65536 MAX_NUM_SEQS=2 PORT=8080 ./run.sh
+MAX_MODEL_LEN=65536 MAX_CONCURRENT_REQUESTS=2 PORT=8080 ./run.sh
 ```
 
 ## Context and concurrency
@@ -55,24 +56,24 @@ reliably:
 
 ```bash
 # Interactive, low-memory configuration
-MAX_MODEL_LEN=32768 MAX_NUM_SEQS=1 ./run.sh
+MAX_MODEL_LEN=32768 MAX_CONCURRENT_REQUESTS=1 ./run.sh
 
 # Balanced long-context configuration
-MAX_MODEL_LEN=65536 MAX_NUM_SEQS=2 ./run.sh
+MAX_MODEL_LEN=65536 MAX_CONCURRENT_REQUESTS=2 ./run.sh
 ```
 
 Current vLLM versions can profile memory and select the largest context that
 fits:
 
 ```bash
-MAX_MODEL_LEN=auto MAX_NUM_SEQS=1 ./run.sh
+MAX_MODEL_LEN=auto MAX_CONCURRENT_REQUESTS=1 ./run.sh
 ```
 
 Qwen3.8 supports up to 262,144 tokens. Trying the full window requires
 substantially more KV-cache memory:
 
 ```bash
-MAX_MODEL_LEN=262144 MAX_NUM_SEQS=1 \
+MAX_MODEL_LEN=262144 MAX_CONCURRENT_REQUESTS=1 \
 GPU_MEMORY_UTILIZATION=0.50 ./run.sh
 ```
 
@@ -80,12 +81,19 @@ Treat that memory fraction as an experiment. If the process is killed or CUDA
 reports an out-of-memory error, lower context or concurrency before raising the
 fraction further.
 
+vLLM's HTTP server can accept more requests than this setting. It queues
+requests beyond the active slots; `MAX_CONCURRENT_REQUESTS` controls how many
+sequences can be processed in one scheduler iteration, not the number of TCP
+connections. The pinned vLLM profiles do not impose a separate hard queue
+limit.
+
 For latency and throughput:
 
-- `MAX_NUM_SEQS=1` favors one interactive request and reduces graph capacity.
-- `MAX_NUM_SEQS=4` is a balanced default for a user and several agent calls.
-- `MAX_NUM_SEQS=8` may improve aggregate throughput but uses more memory and
-  can increase individual-request latency.
+- `MAX_CONCURRENT_REQUESTS=1` favors one interactive request and reduces graph
+  capacity.
+- `MAX_CONCURRENT_REQUESTS=4` is the default for all regular vLLM profiles.
+- `MAX_CONCURRENT_REQUESTS=8` may improve aggregate throughput but uses more
+  memory and can increase individual-request latency.
 - Prefix caching is already enabled and helps when requests share a long,
   identical prefix.
 - Speculative decoding uses extra memory for a draft model in exchange for
@@ -96,7 +104,7 @@ The default is one 131,072-token slot. Four parallel clients receive roughly
 32K tokens each:
 
 ```bash
-MAX_NUM_SEQS=4 ./run-muse-glimmer.sh
+MAX_CONCURRENT_REQUESTS=4 ./run-muse-glimmer.sh
 ```
 
 ## Storage and downloads
@@ -208,6 +216,29 @@ throughput.
 
 ## Model-specific notes
 
+### Bonsai 2 status
+
+Bonsai 2 is attractive for Thor: the official 27B ternary model is only 5.95
+GB in PTQ1_0 or 7.21 GB in PQ2_0, and Prism recommends PQ2_0 for Blackwell.
+However, it is not currently a drop-in model for either runtime in this
+repository:
+
+- The GGUF files require Prism ML's llama.cpp fork. Stock llama.cpp rejects the
+  fork-specific formats, so NVIDIA's standard Thor llama.cpp image cannot load
+  them.
+- Prism's prebuilt matrix includes Linux ARM64 CPU and Linux x64 CUDA, but not
+  Linux ARM64 CUDA. Thor would currently require an unvalidated source build of
+  the custom CUDA runtime.
+- The separate Bonsai 2 vLLM plugin requires vLLM 0.29.0 and has only been
+  validated on Linux x86_64 with one A100 and one executing request. Its own
+  documentation says simultaneous GPU batching is not validated.
+
+For those reasons there is no `run-bonsai2.sh` yet. Merely pointing `MODEL` at
+the repository would either fail to load or use the wrong kernels. Once Prism
+publishes a Linux ARM64 CUDA build or confirms the vLLM plugin on Jetson Thor,
+the 7.21 GB PQ2_0 path is the first one to revisit. There is currently no
+published Thor tokens/s result.
+
 ### Qwen3.8-27B
 
 The default profile uses an NVFP4 target, FP8 KV cache, DFlash2 with seven
@@ -246,7 +277,7 @@ smallest profile and is useful when latency and memory headroom matter most.
 The runner enables the float32 Mamba SSM cache required by the model card.
 
 ```bash
-MAX_MODEL_LEN=65536 MAX_NUM_SEQS=2 ./run-nemotron.sh
+MAX_MODEL_LEN=65536 MAX_CONCURRENT_REQUESTS=2 ./run-nemotron.sh
 ```
 
 Its tool-call parser is a Python plugin shipped in the model repository rather
@@ -259,7 +290,7 @@ draft, FP8 KV cache, Marlin MoE, FlashInfer Mamba, stochastic rounding, and the
 Nemotron reasoning parser. It defaults to a 128K context and four sequences.
 
 ```bash
-MAX_MODEL_LEN=65536 MAX_NUM_SEQS=1 ./run-nemotron-lightning.sh
+MAX_MODEL_LEN=65536 MAX_CONCURRENT_REQUESTS=1 ./run-nemotron-lightning.sh
 ```
 
 NVIDIA measured 123.01–138.02 output tok/s across representative writing,
@@ -277,7 +308,7 @@ The model supports text and images and advertises a 256K context, but the
 launcher starts with NVIDIA's validated 8K setting:
 
 ```bash
-MAX_MODEL_LEN=32768 MAX_NUM_SEQS=1 ./run-gemma4.sh
+MAX_MODEL_LEN=32768 MAX_CONCURRENT_REQUESTS=1 ./run-gemma4.sh
 ```
 
 Access to Google's assistant repository may require accepting its Hugging Face
@@ -316,7 +347,7 @@ one-token MTP head, and disables the unsupported FlashInfer FP4 MoE path on
 Thor's SM110a GPU. It starts at 32K context:
 
 ```bash
-MAX_MODEL_LEN=65536 MAX_NUM_SEQS=1 ./run-glm47flash.sh
+MAX_MODEL_LEN=65536 MAX_CONCURRENT_REQUESTS=1 ./run-glm47flash.sh
 ```
 
 Treat it as experimental until it passes representative prompts, tool calls,
@@ -327,7 +358,7 @@ and sustained-load testing on the board.
 `Firworks/GLM-4.5-Air-nvfp4` is a community checkpoint whose model card
 contains a single-device DGX Spark recipe. It was tested on B200 rather than
 Jetson Thor, so kernel compatibility, memory use, and speed are not guaranteed.
-The profile starts eagerly at 32K context and one sequence.
+The profile starts eagerly at 32K context and two active sequences.
 
 If it fails while loading, avoid repeatedly raising the memory fraction until
 the OS swaps. Use GLM-4.7-Flash, Nemotron, or Qwen instead.
@@ -375,7 +406,7 @@ NVIDIA container-runtime installation before changing model settings.
 Try, in order:
 
 1. Lower `MAX_MODEL_LEN`.
-2. Set `MAX_NUM_SEQS=1`.
+2. Set `MAX_CONCURRENT_REQUESTS=1`.
 3. Close other GPU and memory-heavy applications.
 4. Lower `GPU_MEMORY_UTILIZATION` if the OS is under memory pressure.
 5. Raise it slightly only if vLLM reports that its configured fraction is too
@@ -403,6 +434,7 @@ du -sh "${HF_CACHE:-$HOME/.cache/huggingface}"
 - [NVIDIA Jetson Thor specifications](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-thor/)
 - [Jetson Thor power and performance guide](https://docs.nvidia.com/jetson/archives/r38.4/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonThor.html)
 - [vLLM serve options](https://docs.vllm.ai/en/latest/cli/serve/)
+- [vLLM 0.28 `max-num-seqs` documentation](https://docs.vllm.ai/en/v0.28.0/cli/serve/)
 - [Jetson AI Lab benchmark data](https://github.com/NVIDIA-AI-IOT/jetson-ai-lab/blob/main/src/data/benchmarks.json)
 - [Default Qwen3.8 NVFP4 checkpoint](https://huggingface.co/Inferact/Qwen3.8-27B-NVFP4)
 - [NVIDIA Qwen3.8 NVFP4 checkpoint](https://huggingface.co/nvidia/Qwen3.8-27B-NVFP4)
@@ -421,7 +453,10 @@ du -sh "${HF_CACHE:-$HOME/.cache/huggingface}"
 - [GLM-4.7-Flash model card](https://huggingface.co/zai-org/GLM-4.7-Flash)
 - [Experimental GLM-4.7-Flash NVFP4 checkpoint](https://huggingface.co/GadflyII/GLM-4.7-Flash-NVFP4)
 - [Experimental GLM-4.5-Air NVFP4 checkpoint](https://huggingface.co/Firworks/GLM-4.5-Air-nvfp4)
+- [Official Bonsai 2 GGUF model](https://huggingface.co/prism-ml/Ternary-Bonsai-2-27B-gguf)
+- [Prism ML Bonsai demo and runtime matrix](https://github.com/PrismML-Eng/Bonsai-demo)
+- [Experimental Bonsai 2 vLLM plugin](https://github.com/wonder-dot-ai/bonsai2-vllm-plugin)
 
-Model cards and runtime flags were last checked on 2026-09-27. Recheck the
+Model cards and runtime flags were last checked on 2026-09-28. Recheck the
 linked source before downloading a large checkpoint after upgrading vLLM or
 JetPack.

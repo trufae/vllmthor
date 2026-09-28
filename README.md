@@ -25,6 +25,10 @@ The GLM profiles are experimental because their exact checkpoints have not
 been validated or benchmarked on Jetson Thor. Published speeds come from
 different workloads and are not a controlled head-to-head comparison.
 
+Bonsai 2 is not listed as a launcher yet because its custom CUDA runtimes have
+not been validated on Linux ARM64/Jetson Thor. See the
+[Bonsai 2 status](ADVANCED.md#bonsai-2-status).
+
 See [Advanced configuration and tuning](ADVANCED.md) for model details,
 context tuning, benchmark notes, power settings, and troubleshooting.
 
@@ -120,10 +124,18 @@ to interpret the result.
 
 ## Common options
 
+The vLLM profiles process four requests concurrently by default (two for the
+large experimental GLM-4.5-Air profile); additional requests wait in vLLM's
+queue. Change the number of active requests with:
+
+```bash
+MAX_CONCURRENT_REQUESTS=8 ./run.sh
+```
+
 Use a shorter context or a different port:
 
 ```bash
-MAX_MODEL_LEN=32768 MAX_NUM_SEQS=1 ./run.sh
+MAX_MODEL_LEN=32768 MAX_CONCURRENT_REQUESTS=2 ./run.sh
 PORT=8080 ./run.sh
 ```
 

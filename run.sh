@@ -83,7 +83,7 @@ case "$MODEL_PROFILE" in
 		DEFAULT_SERVED_MODEL="glm-4.5-air"
 		DEFAULT_MAX_MODEL_LEN="32768"
 		DEFAULT_GPU_MEMORY_UTILIZATION="0.50"
-		DEFAULT_MAX_NUM_SEQS="1"
+		DEFAULT_MAX_NUM_SEQS="2"
 		DEFAULT_CONTAINER_NAME="glm45air-vllm"
 		PROFILE_TITLE="GLM-4.5-Air NVFP4 (experimental)"
 		;;
@@ -139,11 +139,19 @@ SERVED_MODEL="${SERVED_MODEL:-$DEFAULT_SERVED_MODEL}"
 
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-$DEFAULT_MAX_MODEL_LEN}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-$DEFAULT_GPU_MEMORY_UTILIZATION}"
-MAX_NUM_SEQS="${MAX_NUM_SEQS:-$DEFAULT_MAX_NUM_SEQS}"
+# MAX_CONCURRENT_REQUESTS is the user-facing name. MAX_NUM_SEQS remains an
+# alias because it maps directly to vLLM's --max-num-seqs option.
+MAX_CONCURRENT_REQUESTS="${MAX_CONCURRENT_REQUESTS:-${MAX_NUM_SEQS:-$DEFAULT_MAX_NUM_SEQS}}"
+MAX_NUM_SEQS="$MAX_CONCURRENT_REQUESTS"
 PORT="${PORT:-8000}"
 
 HF_CACHE="${HF_CACHE:-$HOME/.cache/huggingface}"
 CONTAINER_NAME="${CONTAINER_NAME:-$DEFAULT_CONTAINER_NAME}"
+
+if [[ ! "$MAX_CONCURRENT_REQUESTS" =~ ^[1-9][0-9]*$ ]]; then
+	echo "MAX_CONCURRENT_REQUESTS must be a positive integer, got: $MAX_CONCURRENT_REQUESTS" >&2
+	exit 1
+fi
 
 if [[ ! "$MODEL" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)?$ ]]; then
 	echo "Unsupported Hugging Face model ID: $MODEL" >&2
@@ -382,7 +390,7 @@ if [ -n "$DRAFT_MODEL" ]; then
 	echo " Draft:        $DRAFT_MODEL"
 fi
 echo " Context:      $MAX_MODEL_LEN"
-echo " Sequences:    $MAX_NUM_SEQS"
+echo " Active slots: $MAX_CONCURRENT_REQUESTS"
 if [ "$ENGINE" = "vllm" ]; then
 	echo " GPU memory:   $GPU_MEMORY_UTILIZATION of total"
 fi
