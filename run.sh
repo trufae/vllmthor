@@ -5,6 +5,7 @@
 # Profiles:
 #   qwen       Qwen3.8-27B NVFP4 + DFlash2 (default)
 #   qwen36     Qwen3.6-35B-A3B NVFP4 + DFlash
+#   ornith     Ornith 1.5 35B-A3B NVFP4 + DFlash
 #   nemotron   NVIDIA Nemotron Nano 9B v2 NVFP4
 #   nemotron35 NVIDIA Nemotron 3.5 Lightning NVFP4 + DSpark
 #   glm45air   GLM-4.5-Air NVFP4 (experimental on Thor)
@@ -15,6 +16,7 @@
 # The profile wrappers are the easiest entry points:
 #   ./run.sh
 #   ./run-qwen36.sh
+#   ./run-ornith.sh
 #   ./run-nemotron.sh
 #   ./run-nemotron-lightning.sh
 #   ./run-glm45air.sh
@@ -36,6 +38,7 @@ case "$MODEL_PROFILE" in
 		DEFAULT_MAX_MODEL_LEN="131072"
 		DEFAULT_GPU_MEMORY_UTILIZATION="0.35"
 		DEFAULT_MAX_NUM_SEQS="4"
+		DEFAULT_MAX_NUM_BATCHED_TOKENS=""
 		DEFAULT_CONTAINER_NAME="qwen38-vllm"
 		PROFILE_TITLE="Qwen3.8-27B NVFP4 + DFlash2"
 		;;
@@ -48,8 +51,22 @@ case "$MODEL_PROFILE" in
 		DEFAULT_MAX_MODEL_LEN="65536"
 		DEFAULT_GPU_MEMORY_UTILIZATION="0.78"
 		DEFAULT_MAX_NUM_SEQS="4"
+		DEFAULT_MAX_NUM_BATCHED_TOKENS=""
 		DEFAULT_CONTAINER_NAME="qwen36-vllm"
 		PROFILE_TITLE="Qwen3.6-35B-A3B NVFP4 + DFlash"
+		;;
+	ornith)
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_ENGINE="vllm"
+		DEFAULT_MODEL="ornith-ai/Ornith-1.5-35B-A3B-NVFP4"
+		DEFAULT_DRAFT_MODEL="ornith-ai/Ornith-1.5-35B-A3B-DFlash"
+		DEFAULT_SERVED_MODEL="ornith"
+		DEFAULT_MAX_MODEL_LEN="65536"
+		DEFAULT_GPU_MEMORY_UTILIZATION="0.78"
+		DEFAULT_MAX_NUM_SEQS="4"
+		DEFAULT_MAX_NUM_BATCHED_TOKENS="8192"
+		DEFAULT_CONTAINER_NAME="ornith-vllm"
+		PROFILE_TITLE="Ornith 1.5 35B-A3B NVFP4 + DFlash"
 		;;
 	nemotron)
 		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
@@ -60,6 +77,7 @@ case "$MODEL_PROFILE" in
 		DEFAULT_MAX_MODEL_LEN="131072"
 		DEFAULT_GPU_MEMORY_UTILIZATION="0.35"
 		DEFAULT_MAX_NUM_SEQS="4"
+		DEFAULT_MAX_NUM_BATCHED_TOKENS=""
 		DEFAULT_CONTAINER_NAME="nemotron-vllm"
 		PROFILE_TITLE="NVIDIA Nemotron Nano NVFP4"
 		;;
@@ -72,6 +90,7 @@ case "$MODEL_PROFILE" in
 		DEFAULT_MAX_MODEL_LEN="128000"
 		DEFAULT_GPU_MEMORY_UTILIZATION="0.70"
 		DEFAULT_MAX_NUM_SEQS="4"
+		DEFAULT_MAX_NUM_BATCHED_TOKENS="16384"
 		DEFAULT_CONTAINER_NAME="nemotron35-vllm"
 		PROFILE_TITLE="NVIDIA Nemotron 3.5 Lightning NVFP4 + DSpark"
 		;;
@@ -84,6 +103,7 @@ case "$MODEL_PROFILE" in
 		DEFAULT_MAX_MODEL_LEN="32768"
 		DEFAULT_GPU_MEMORY_UTILIZATION="0.50"
 		DEFAULT_MAX_NUM_SEQS="2"
+		DEFAULT_MAX_NUM_BATCHED_TOKENS=""
 		DEFAULT_CONTAINER_NAME="glm45air-vllm"
 		PROFILE_TITLE="GLM-4.5-Air NVFP4 (experimental)"
 		;;
@@ -96,6 +116,7 @@ case "$MODEL_PROFILE" in
 		DEFAULT_MAX_MODEL_LEN="8192"
 		DEFAULT_GPU_MEMORY_UTILIZATION="0.70"
 		DEFAULT_MAX_NUM_SEQS="4"
+		DEFAULT_MAX_NUM_BATCHED_TOKENS=""
 		DEFAULT_CONTAINER_NAME="gemma4-vllm"
 		PROFILE_TITLE="Gemma 4 26B-A4B NVFP4 + MTP"
 		;;
@@ -108,6 +129,7 @@ case "$MODEL_PROFILE" in
 		DEFAULT_MAX_MODEL_LEN="32768"
 		DEFAULT_GPU_MEMORY_UTILIZATION="0.60"
 		DEFAULT_MAX_NUM_SEQS="4"
+		DEFAULT_MAX_NUM_BATCHED_TOKENS=""
 		DEFAULT_CONTAINER_NAME="glm47flash-vllm"
 		PROFILE_TITLE="GLM-4.7-Flash NVFP4 (experimental)"
 		;;
@@ -120,12 +142,13 @@ case "$MODEL_PROFILE" in
 		DEFAULT_MAX_MODEL_LEN="131072"
 		DEFAULT_GPU_MEMORY_UTILIZATION=""
 		DEFAULT_MAX_NUM_SEQS="1"
+		DEFAULT_MAX_NUM_BATCHED_TOKENS=""
 		DEFAULT_CONTAINER_NAME="muse-glimmer-llama"
 		PROFILE_TITLE="Muse Glimmer 30B K-Quant + DFlash"
 		;;
 	*)
 		echo "Unknown MODEL_PROFILE: $MODEL_PROFILE" >&2
-		echo "Expected one of: qwen, qwen36, nemotron, nemotron35, glm45air, gemma4, glm47flash, muse" >&2
+		echo "Expected one of: qwen, qwen36, ornith, nemotron, nemotron35, glm45air, gemma4, glm47flash, muse" >&2
 		exit 1
 		;;
 esac
@@ -143,13 +166,20 @@ GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-$DEFAULT_GPU_MEMORY_UTILIZATIO
 # alias because it maps directly to vLLM's --max-num-seqs option.
 MAX_CONCURRENT_REQUESTS="${MAX_CONCURRENT_REQUESTS:-${MAX_NUM_SEQS:-$DEFAULT_MAX_NUM_SEQS}}"
 MAX_NUM_SEQS="$MAX_CONCURRENT_REQUESTS"
+MAX_NUM_BATCHED_TOKENS="${MAX_NUM_BATCHED_TOKENS:-$DEFAULT_MAX_NUM_BATCHED_TOKENS}"
 PORT="${PORT:-8000}"
 
 HF_CACHE="${HF_CACHE:-$HOME/.cache/huggingface}"
 CONTAINER_NAME="${CONTAINER_NAME:-$DEFAULT_CONTAINER_NAME}"
+VLLM_CACHE="${VLLM_CACHE:-$HOME/.cache/vllm/$MODEL_PROFILE}"
 
 if [[ ! "$MAX_CONCURRENT_REQUESTS" =~ ^[1-9][0-9]*$ ]]; then
 	echo "MAX_CONCURRENT_REQUESTS must be a positive integer, got: $MAX_CONCURRENT_REQUESTS" >&2
+	exit 1
+fi
+if [ -n "$MAX_NUM_BATCHED_TOKENS" ] &&
+	[[ ! "$MAX_NUM_BATCHED_TOKENS" =~ ^[1-9][0-9]*$ ]]; then
+	echo "MAX_NUM_BATCHED_TOKENS must be a positive integer, got: $MAX_NUM_BATCHED_TOKENS" >&2
 	exit 1
 fi
 
@@ -162,7 +192,7 @@ if [ -n "$DRAFT_MODEL" ] &&
 	echo "Unsupported Hugging Face draft model ID: $DRAFT_MODEL" >&2
 	exit 1
 fi
-if [[ "$MODEL_PROFILE" =~ ^(qwen|qwen36|nemotron35|gemma4)$ ]] && [ -z "$DRAFT_MODEL" ]; then
+if [[ "$MODEL_PROFILE" =~ ^(qwen|qwen36|ornith|nemotron35|gemma4)$ ]] && [ -z "$DRAFT_MODEL" ]; then
 	echo "The $MODEL_PROFILE profile requires a matching DRAFT_MODEL." >&2
 	exit 1
 fi
@@ -181,6 +211,9 @@ model_args=(
 	--enable-prefix-caching
 	--trust-remote-code
 )
+if [ -n "$MAX_NUM_BATCHED_TOKENS" ]; then
+	model_args+=(--max-num-batched-tokens "$MAX_NUM_BATCHED_TOKENS")
+fi
 
 case "$MODEL_PROFILE" in
 	qwen)
@@ -215,6 +248,30 @@ case "$MODEL_PROFILE" in
 			"{\"method\":\"dflash\",\"model\":\"$DRAFT_MODEL\",\"num_speculative_tokens\":12}"
 		)
 		;;
+	ornith)
+		# Ornith's official NVFP4 checkpoint is W4A16: its weights are FP4,
+		# but its activations are BF16. vLLM therefore uses weight-only Marlin;
+		# native FP4 MoE kernels require a W4A4 checkpoint. Override the
+		# checkpoint's FP8 KV-cache metadata because FlashAttention only
+		# supports it on SM90/SM100, not Thor's SM110a GPU.
+		container_env+=(
+			-e VLLM_USE_FLASHINFER_MOE_FP4=0
+			-e "VLLM_MARLIN_USE_ATOMIC_ADD=${VLLM_MARLIN_USE_ATOMIC_ADD:-1}"
+			-e LD_PRELOAD=/usr/lib/aarch64-linux-gnu/nvidia/libcuda.so.1
+		)
+		model_args+=(
+			--quantization modelopt
+			--kv-cache-dtype bfloat16
+			--language-model-only
+			--attention-backend flash_attn
+			--moe-backend marlin
+			--reasoning-parser qwen3
+			--enable-auto-tool-choice
+			--tool-call-parser qwen3_xml
+			--speculative-config
+			"{\"method\":\"dflash\",\"model\":\"$DRAFT_MODEL\",\"num_speculative_tokens\":8}"
+		)
+		;;
 	nemotron)
 		# NVIDIA specifies float32 here to avoid degrading model quality.
 		model_args+=(--mamba_ssm_cache_dtype float32)
@@ -222,7 +279,6 @@ case "$MODEL_PROFILE" in
 	nemotron35)
 		model_args+=(
 			--kv-cache-dtype fp8
-			--max-num-batched-tokens 16384
 			--moe-backend marlin
 			--reasoning-parser nemotron_v3
 			--enable-auto-tool-choice
@@ -309,10 +365,17 @@ if ! docker info 2>/dev/null | grep -qi nvidia; then
 fi
 
 mkdir -p "$HF_CACHE"
+if [ "$ENGINE" = "vllm" ]; then
+	mkdir -p "$VLLM_CACHE"
+fi
 
 echo
 echo "==> Hugging Face cache:"
 echo "    $HF_CACHE"
+if [ "$ENGINE" = "vllm" ]; then
+	echo "==> vLLM compile cache:"
+	echo "    $VLLM_CACHE"
+fi
 
 echo
 echo "==> Pulling $ENGINE server image $SERVER_IMAGE..."
@@ -391,6 +454,9 @@ if [ -n "$DRAFT_MODEL" ]; then
 fi
 echo " Context:      $MAX_MODEL_LEN"
 echo " Active slots: $MAX_CONCURRENT_REQUESTS"
+if [ -n "$MAX_NUM_BATCHED_TOKENS" ]; then
+	echo " Batch tokens: $MAX_NUM_BATCHED_TOKENS"
+fi
 if [ "$ENGINE" = "vllm" ]; then
 	echo " GPU memory:   $GPU_MEMORY_UTILIZATION of total"
 fi
@@ -435,6 +501,7 @@ exec docker run --rm -it \
 	--network host \
 	--ipc=host \
 	-v "$HF_CACHE:/root/.cache/huggingface" \
+	-v "$VLLM_CACHE:/root/.cache/vllm" \
 	"${container_env[@]}" \
 	"$SERVER_IMAGE" \
 	"$MODEL" \

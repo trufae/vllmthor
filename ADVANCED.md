@@ -31,8 +31,10 @@ variables override that profile's defaults:
 | `GPU_MEMORY_UTILIZATION` | `0.35` | Unified-memory fraction available to vLLM |
 | `MAX_CONCURRENT_REQUESTS` | `4` | Active generation slots (`--max-num-seqs`) |
 | `MAX_NUM_SEQS` | unset | Backwards-compatible alias for `MAX_CONCURRENT_REQUESTS` |
+| `MAX_NUM_BATCHED_TOKENS` | unset | Optional per-iteration token budget; Ornith defaults to `8192` |
 | `PORT` | `8000` | OpenAI-compatible API port |
 | `HF_CACHE` | `$HOME/.cache/huggingface` | Host model-cache directory |
+| `VLLM_CACHE` | `$HOME/.cache/vllm/<profile>` | Persistent vLLM compile cache |
 | `HF_TOKEN` | empty | Optional Hugging Face access token |
 | `CONTAINER_NAME` | profile-specific | Docker container name |
 | `MUSE_MODEL_FILE` | `Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf` | Muse GGUF target selected by llama.cpp |
@@ -270,6 +272,62 @@ It is configured for text-only serving. A community single-Thor configuration
 reported 116.5 output tok/s averaged across four coding workloads and a 139.1
 tok/s peak.
 
+### Ornith 1.5 35B-A3B
+
+This profile pairs Ornith's official NVFP4 target with its matching DFlash
+draft. Ornith 1.5 is a reasoning-oriented coding and agentic model derived from
+the Qwen3.5 MoE architecture: it has about 35B total parameters and activates
+about 3B per token. The launcher exposes reasoning and tool calls through the
+Qwen parsers and serves the language model only.
+
+```bash
+./run-ornith.sh
+```
+
+The DFlash authors validate vLLM 0.28.0 with eight speculative tokens and a
+32K context. This profile keeps the validated eight-token draft block but
+defaults to a 65,536-token context on Thor. It also raises vLLM's per-iteration
+token budget from 2,048 to 8,192 so speculative decoding does not reduce the
+scheduler below vLLM's recommended performance threshold. Increasing it further
+can improve long-prompt or concurrent throughput at the cost of greater
+temporary memory use and potentially worse interactive latency:
+
+```bash
+MAX_NUM_BATCHED_TOKENS=16384 ./run-ornith.sh
+```
+
+The official checkpoint is W4A16 NVFP4: the weights are FP4, but the activations
+remain BF16. vLLM therefore uses its weight-only Marlin kernel and emits a
+generic warning about native FP4 support. This does not mean Thor lacks FP4
+hardware; native FP4 MoE execution requires a W4A4 checkpoint with quantized
+activations. Selecting a CUTLASS or FlashInfer FP4 backend cannot convert the
+checkpoint at load time. A W4A4 re-quantization of the original BF16 Ornith
+model is required to remove that limitation. The launcher enables Marlin's
+experimental atomic-add reduction because Ornith's small expert dimensions meet
+vLLM's optimization guard. Disable it for an A/B comparison with:
+
+```bash
+VLLM_MARLIN_USE_ATOMIC_ADD=0 ./run-ornith.sh
+```
+
+The first startup compiles model graphs and may spend around 30 seconds in
+`torch.compile`. The launcher persists `/root/.cache/vllm` in a profile-specific
+host directory, so later containers can reuse compatible compiled artifacts.
+The Triton `tl.make_block_ptr` deprecation notice during compilation is emitted
+by an upstream kernel and does not affect serving.
+
+The profile also overrides the checkpoint's FP8 KV-cache metadata with BF16:
+vLLM's FlashAttention implementation only supports FP8 KV cache on SM90 and
+SM100, not Thor's SM110a GPU. The model itself supports up to 262,144 tokens,
+so longer contexts can be tested with fewer active requests:
+
+```bash
+MAX_MODEL_LEN=131072 MAX_CONCURRENT_REQUESTS=1 ./run-ornith.sh
+```
+
+Treat the profile as experimental until the exact target/draft pair is tested
+on Thor. There is currently no published Thor throughput result.
+
 ### Nemotron Nano 9B v2
 
 The official model card lists Jetson AGX Thor as tested hardware. This is the
@@ -366,12 +424,16 @@ the OS swaps. Use GLM-4.7-Flash, Nemotron, or Qwen instead.
 ## Advanced cleanup
 
 `clean.sh` removes the selected profile's container, server image, model
-repository caches, remote-code cache, and shared Xet cache. The Xet cache can
-be shared by unrelated Hugging Face repositories; preserve it when needed:
+repository caches, remote-code cache, vLLM compile cache, and shared Xet cache.
+The Xet cache can be shared by unrelated Hugging Face repositories; preserve it
+when needed:
 
 ```bash
 KEEP_XET_CACHE=1 ./clean.sh
 ```
+
+For safety, cleanup preserves a custom `VLLM_CACHE`; remove that directory
+separately when it is no longer shared or needed.
 
 If the server was launched with overrides, pass the same values to the cleaner:
 
@@ -442,6 +504,8 @@ du -sh "${HF_CACHE:-$HOME/.cache/huggingface}"
 - [NVIDIA Qwen3.6-35B-A3B NVFP4](https://huggingface.co/nvidia/Qwen3.6-35B-A3B-NVFP4)
 - [Qwen3.6 DFlash draft](https://huggingface.co/z-lab/Qwen3.6-35B-A3B-DFlash)
 - [Thor Qwen3.6 deployment notes](https://huggingface.co/patrickbdevaney/qwen-3.6-35b-a3b-dflash-jetson-agx-thor)
+- [Ornith 1.5 35B-A3B NVFP4](https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B-NVFP4)
+- [Ornith 1.5 35B-A3B DFlash draft](https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B-DFlash)
 - [NVIDIA Nemotron Nano 9B v2 NVFP4](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2-NVFP4)
 - [NVIDIA Nemotron 3.5 Lightning NVFP4](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4)
 - [NVIDIA Jetson reasoning-model deployment guide](https://developer.nvidia.com/blog/frontier-reasoning-reaches-the-edge-how-to-deploy-and-optimize-models-on-nvidia-jetson/)
@@ -457,6 +521,6 @@ du -sh "${HF_CACHE:-$HOME/.cache/huggingface}"
 - [Prism ML Bonsai demo and runtime matrix](https://github.com/PrismML-Eng/Bonsai-demo)
 - [Experimental Bonsai 2 vLLM plugin](https://github.com/wonder-dot-ai/bonsai2-vllm-plugin)
 
-Model cards and runtime flags were last checked on 2026-09-28. Recheck the
+Model cards and runtime flags were last checked on 2026-10-05. Recheck the
 linked source before downloading a large checkpoint after upgrading vLLM or
 JetPack.

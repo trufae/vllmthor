@@ -4,6 +4,7 @@
 #
 # Select the same profile used to start the server:
 #   MODEL_PROFILE=qwen36 ./clean.sh
+#   MODEL_PROFILE=ornith ./clean.sh
 #   MODEL_PROFILE=nemotron ./clean.sh
 #   MODEL_PROFILE=nemotron35 ./clean.sh
 #   MODEL_PROFILE=glm45air ./clean.sh
@@ -31,6 +32,12 @@ case "$MODEL_PROFILE" in
 		DEFAULT_MODEL="nvidia/Qwen3.6-35B-A3B-NVFP4"
 		DEFAULT_DRAFT_MODEL="z-lab/Qwen3.6-35B-A3B-DFlash"
 		DEFAULT_CONTAINER_NAME="qwen36-vllm"
+		;;
+	ornith)
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_MODEL="ornith-ai/Ornith-1.5-35B-A3B-NVFP4"
+		DEFAULT_DRAFT_MODEL="ornith-ai/Ornith-1.5-35B-A3B-DFlash"
+		DEFAULT_CONTAINER_NAME="ornith-vllm"
 		;;
 	nemotron)
 		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
@@ -70,7 +77,7 @@ case "$MODEL_PROFILE" in
 		;;
 	*)
 		echo "Unknown MODEL_PROFILE: $MODEL_PROFILE" >&2
-		echo "Expected one of: qwen, qwen36, nemotron, nemotron35, glm45air, gemma4, glm47flash, muse" >&2
+		echo "Expected one of: qwen, qwen36, ornith, nemotron, nemotron35, glm45air, gemma4, glm47flash, muse" >&2
 		exit 1
 		;;
 esac
@@ -81,6 +88,8 @@ MODEL="${MODEL:-$DEFAULT_MODEL}"
 DRAFT_MODEL="${DRAFT_MODEL-$DEFAULT_DRAFT_MODEL}"
 
 HF_CACHE="${HF_CACHE:-${HOME:?HOME must be set}/.cache/huggingface}"
+DEFAULT_VLLM_CACHE="${HOME:?HOME must be set}/.cache/vllm/$MODEL_PROFILE"
+VLLM_CACHE="${VLLM_CACHE:-$DEFAULT_VLLM_CACHE}"
 KEEP_XET_CACHE="${KEEP_XET_CACHE:-0}"
 
 CONTAINER_NAME="${CONTAINER_NAME:-$DEFAULT_CONTAINER_NAME}"
@@ -90,9 +99,18 @@ if ! HF_CACHE="$(realpath -m -- "$HF_CACHE")"; then
 	echo "ERROR: could not resolve HF_CACHE." >&2
 	exit 1
 fi
+if ! VLLM_CACHE="$(realpath -m -- "$VLLM_CACHE")"; then
+	echo "ERROR: could not resolve VLLM_CACHE." >&2
+	exit 1
+fi
+DEFAULT_VLLM_CACHE="$(realpath -m -- "$DEFAULT_VLLM_CACHE")"
 
 if [ -z "$HF_CACHE" ] || [ "$HF_CACHE" = "/" ]; then
 	echo "ERROR: refusing to clean unsafe HF_CACHE value: '$HF_CACHE'" >&2
+	exit 1
+fi
+if [ -z "$VLLM_CACHE" ] || [ "$VLLM_CACHE" = "/" ]; then
+	echo "ERROR: refusing to clean unsafe VLLM_CACHE value: '$VLLM_CACHE'" >&2
 	exit 1
 fi
 
@@ -191,6 +209,14 @@ if [ "$KEEP_XET_CACHE" = "1" ]; then
 	echo "==> Preserving shared Xet cache: $HF_CACHE/xet"
 else
 	remove_path "$HF_CACHE/xet"
+fi
+
+echo
+echo "==> Removing the vLLM compile cache..."
+if [ "$VLLM_CACHE" = "$DEFAULT_VLLM_CACHE" ]; then
+	remove_path "$VLLM_CACHE"
+else
+	echo "==> Preserving custom vLLM cache: $VLLM_CACHE"
 fi
 
 # Remove package scaffolding and cache directories only when nothing else uses

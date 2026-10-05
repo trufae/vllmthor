@@ -14,6 +14,7 @@ The default is Qwen3.8-27B with DFlash2 speculative decoding.
 | `./run.sh` | Qwen3.8-27B NVFP4 + DFlash2 | **30.3 GB** | **27.69–34.44 tok/s** |
 | `./run-qwen38.sh` | Qwen3.8-27B NVFP4 + DFlash2 | **30.3 GB** | **27.69–34.44 tok/s** |
 | `./run-qwen36.sh` | Qwen3.6-35B-A3B NVFP4 + DFlash | **24.3 GB** | **116.5 average; 139.1 peak tok/s** |
+| `./run-ornith.sh` | Ornith 1.5 35B-A3B NVFP4 + DFlash | **24.2 GB** | Not published for Thor |
 | `./run-nemotron.sh` | Nemotron Nano 9B v2 NVFP4 | **7.85 GB** | **30 tok/s** |
 | `./run-nemotron-lightning.sh` | Nemotron 3.5 Lightning NVFP4 + DSpark | **23.0 GB** | **123.01–138.02 tok/s** |
 | `./run-gemma4.sh` | Gemma 4 26B-A4B NVFP4 + MTP | **17.3 GB** | **50 tok/s** c1; **180 tok/s** aggregate c8 |
@@ -21,9 +22,9 @@ The default is Qwen3.8-27B with DFlash2 speculative decoding.
 | `./run-glm47flash.sh` | GLM-4.7-Flash 30B-A3B NVFP4 | **20.5 GB** | Not published for Thor |
 | `./run-glm45air.sh` | GLM-4.5-Air NVFP4 | **62 GB** | Not published for Thor |
 
-The GLM profiles are experimental because their exact checkpoints have not
-been validated or benchmarked on Jetson Thor. Published speeds come from
-different workloads and are not a controlled head-to-head comparison.
+The Ornith and GLM profiles are experimental because their exact checkpoints
+have not been validated or benchmarked on Jetson Thor. Published speeds come
+from different workloads and are not a controlled head-to-head comparison.
 
 Bonsai 2 is not listed as a launcher yet because its custom CUDA runtimes have
 not been validated on Linux ARM64/Jetson Thor. See the
@@ -65,6 +66,7 @@ Or select another model from the table, for example:
 
 ```bash
 ./run-gemma4.sh
+./run-ornith.sh
 ./run-muse-glimmer.sh
 ./run-glm47flash.sh
 ```
@@ -161,6 +163,7 @@ Select the profile used by an alternative launcher:
 
 ```bash
 MODEL_PROFILE=qwen36 ./clean.sh
+MODEL_PROFILE=ornith ./clean.sh
 MODEL_PROFILE=nemotron ./clean.sh
 MODEL_PROFILE=nemotron35 ./clean.sh
 MODEL_PROFILE=gemma4 ./clean.sh
