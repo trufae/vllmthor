@@ -5,7 +5,8 @@ Kit. The scripts start an OpenAI-compatible API using vLLM or NVIDIA's
 Thor-optimized llama.cpp container, download the required models, and reuse the
 Hugging Face cache between launches.
 
-The default is Qwen3.8-27B with DFlash2 speculative decoding.
+The default is Qwen3.8-27B with DFlash2 speculative decoding. All vLLM profiles
+use `vllm/vllm-openai:v0.32.0`.
 
 ## Available models
 
@@ -55,7 +56,7 @@ docker info | grep -i nvidia
 Make the scripts executable once:
 
 ```bash
-chmod +x run*.sh clean.sh bench.sh list-models.sh
+chmod +x run*.sh stop.sh clean.sh bench.sh list-models.sh
 ```
 
 Start the default model:
@@ -81,8 +82,16 @@ export HF_TOKEN=hf_your_token_here
 ./run-gemma4.sh
 ```
 
-The first run pulls the server image and downloads the model. Later runs reuse
-the local cache. Keep the terminal open and press `Ctrl-C` to stop the server.
+The launcher runs `docker pull` on every start and reuses cached image layers
+and model files. Keep the terminal open and press `Ctrl-C` to stop the server.
+
+After an image-version upgrade, stop the running server with `Ctrl-C` or
+[`stop.sh`](#stop) from another terminal, then rerun the same
+launcher. It downloads the new image and starts a fresh container using the
+existing model cache. Running containers do not upgrade in place. Do not run
+`clean.sh` for an upgrade: it also deletes model files. Older image tags remain
+on disk until removed. If `SERVER_IMAGE` or `VLLM_IMAGE` is set, update or unset
+that override to use the new default.
 
 ## Test the API
 
@@ -152,6 +161,20 @@ HF_CACHE=/mnt/nvme/huggingface ./run.sh
 
 All available overrides and model-specific recommendations are in
 [ADVANCED.md](ADVANCED.md).
+
+## Stop
+
+Stop the running server from another terminal:
+
+```bash
+./stop.sh
+```
+
+The script detects running project containers automatically, including custom
+names on containers started by the current launcher. It also recognizes the
+standard profile names used by earlier launchers. No environment variables are
+needed. Stopping keeps the Docker images and model caches. If no server is
+running, the script reports that and exits successfully.
 
 ## Clean
 

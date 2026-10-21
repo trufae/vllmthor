@@ -23,7 +23,7 @@ variables override that profile's defaults:
 | Variable | Qwen3.8 default | Purpose |
 | --- | --- | --- |
 | `MODEL_PROFILE` | `qwen` | Internal profile selected by the wrapper |
-| `SERVER_IMAGE` | `vllm/vllm-openai:v0.28.0` | Profile-specific Docker image |
+| `SERVER_IMAGE` | `vllm/vllm-openai:v0.32.0` | Profile-specific Docker image |
 | `MODEL` | `Inferact/Qwen3.8-27B-NVFP4` | Hugging Face target repository |
 | `DRAFT_MODEL` | `incoai/Qwen3.8-27B-DFlash2` | Matching speculative-draft repository |
 | `SERVED_MODEL` | `qwen38` | Model name exposed by the API |
@@ -45,6 +45,9 @@ draft, image, context, concurrency, memory fraction, and container name before
 applying overrides. `GPU_MEMORY_UTILIZATION` is ignored by Muse because that
 profile uses llama.cpp. The older `VLLM_IMAGE` variable remains accepted as an
 alias for `SERVER_IMAGE`.
+
+Shared profile defaults, including the vLLM image tag, are defined in
+[`profiles.sh`](profiles.sh) and loaded by `run.sh`, `stop.sh`, and `clean.sh`.
 
 Multiple overrides can be combined:
 
@@ -548,7 +551,7 @@ du -sh "${HF_CACHE:-$HOME/.cache/huggingface}"
 - [NVIDIA Jetson Thor specifications](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-thor/)
 - [Jetson Thor power and performance guide](https://docs.nvidia.com/jetson/archives/r38.4/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonThor.html)
 - [vLLM serve options](https://docs.vllm.ai/en/latest/cli/serve/)
-- [vLLM 0.28 `max-num-seqs` documentation](https://docs.vllm.ai/en/v0.28.0/cli/serve/)
+- [vLLM 0.32 `max-num-seqs` documentation](https://docs.vllm.ai/en/v0.32.0/cli/serve/)
 - [Jetson AI Lab benchmark data](https://github.com/NVIDIA-AI-IOT/jetson-ai-lab/blob/main/src/data/benchmarks.json)
 - [Default Qwen3.8 NVFP4 checkpoint](https://huggingface.co/Inferact/Qwen3.8-27B-NVFP4)
 - [NVIDIA Qwen3.8 NVFP4 checkpoint](https://huggingface.co/nvidia/Qwen3.8-27B-NVFP4)

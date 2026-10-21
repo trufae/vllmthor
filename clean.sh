@@ -19,87 +19,15 @@
 set -uo pipefail
 IFS=$'\n\t'
 
-MODEL_PROFILE="${MODEL_PROFILE:-qwen}"
-
-case "$MODEL_PROFILE" in
-	qwen)
-		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
-		DEFAULT_MODEL="Inferact/Qwen3.8-27B-NVFP4"
-		DEFAULT_DRAFT_MODEL="incoai/Qwen3.8-27B-DFlash2"
-		DEFAULT_CONTAINER_NAME="qwen38-vllm"
-		;;
-	qwen36)
-		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
-		DEFAULT_MODEL="nvidia/Qwen3.6-35B-A3B-NVFP4"
-		DEFAULT_DRAFT_MODEL="z-lab/Qwen3.6-35B-A3B-DFlash"
-		DEFAULT_CONTAINER_NAME="qwen36-vllm"
-		;;
-	ornith)
-		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
-		DEFAULT_MODEL="ornith-ai/Ornith-1.5-35B-A3B-NVFP4"
-		DEFAULT_DRAFT_MODEL="ornith-ai/Ornith-1.5-35B-A3B-DFlash"
-		DEFAULT_CONTAINER_NAME="ornith-vllm"
-		;;
-	nemotron)
-		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
-		DEFAULT_MODEL="nvidia/NVIDIA-Nemotron-Nano-9B-v2-NVFP4"
-		DEFAULT_DRAFT_MODEL=""
-		DEFAULT_CONTAINER_NAME="nemotron-vllm"
-		;;
-	nemotron35)
-		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
-		DEFAULT_MODEL="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4"
-		DEFAULT_DRAFT_MODEL="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark"
-		DEFAULT_CONTAINER_NAME="nemotron35-vllm"
-		;;
-	glm45air)
-		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:nightly"
-		DEFAULT_MODEL="Firworks/GLM-4.5-Air-nvfp4"
-		DEFAULT_DRAFT_MODEL=""
-		DEFAULT_CONTAINER_NAME="glm45air-vllm"
-		;;
-	gemma4)
-		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.24.0"
-		DEFAULT_MODEL="RedHatAI/gemma-4-26B-A4B-it-NVFP4"
-		DEFAULT_DRAFT_MODEL="google/gemma-4-26B-A4B-it-assistant"
-		DEFAULT_CONTAINER_NAME="gemma4-vllm"
-		;;
-	glm47flash)
-		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
-		DEFAULT_MODEL="GadflyII/GLM-4.7-Flash-NVFP4"
-		DEFAULT_DRAFT_MODEL=""
-		DEFAULT_CONTAINER_NAME="glm47flash-vllm"
-		;;
-	lfm25)
-		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
-		DEFAULT_MODEL="LiquidAI/LFM2.5-24B-A2B-FP8"
-		DEFAULT_DRAFT_MODEL=""
-		DEFAULT_CONTAINER_NAME="lfm25-vllm"
-		;;
-	muse)
-		DEFAULT_SERVER_IMAGE="ghcr.io/nvidia-ai-iot/llama_cpp:latest-jetson-thor"
-		DEFAULT_MODEL="meta-models/Muse-Glimmer-30B-GGUF"
-		DEFAULT_DRAFT_MODEL=""
-		DEFAULT_CONTAINER_NAME="muse-glimmer-llama"
-		;;
-	*)
-		echo "Unknown MODEL_PROFILE: $MODEL_PROFILE" >&2
-		echo "Expected one of: qwen, qwen36, ornith, nemotron, nemotron35, glm45air, gemma4, glm47flash, lfm25, muse" >&2
-		exit 1
-		;;
-esac
-
-# VLLM_IMAGE remains a backwards-compatible alias for SERVER_IMAGE.
-SERVER_IMAGE="${SERVER_IMAGE:-${VLLM_IMAGE:-$DEFAULT_SERVER_IMAGE}}"
-MODEL="${MODEL:-$DEFAULT_MODEL}"
-DRAFT_MODEL="${DRAFT_MODEL-$DEFAULT_DRAFT_MODEL}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+source "$SCRIPT_DIR/profiles.sh" || exit 1
+load_profile "${MODEL_PROFILE:-qwen}" || exit 1
 
 HF_CACHE="${HF_CACHE:-${HOME:?HOME must be set}/.cache/huggingface}"
 DEFAULT_VLLM_CACHE="${HOME:?HOME must be set}/.cache/vllm/$MODEL_PROFILE"
 VLLM_CACHE="${VLLM_CACHE:-$DEFAULT_VLLM_CACHE}"
 KEEP_XET_CACHE="${KEEP_XET_CACHE:-0}"
 
-CONTAINER_NAME="${CONTAINER_NAME:-$DEFAULT_CONTAINER_NAME}"
 failures=0
 
 if ! HF_CACHE="$(realpath -m -- "$HF_CACHE")"; then
