@@ -51,6 +51,27 @@ docker --version
 docker info | grep -i nvidia
 ```
 
+## Upgrade JetPack in place
+
+For an existing Thor running JetPack 7.0, `upgrade-jetpack.sh` automates NVIDIA's
+supported in-place upgrade to **JetPack 7.1 / L4T r38.4**. It keeps the existing
+installation and handles both `.list` and `.sources` APT repositories. This
+does not reach the project's JetPack 7.2 target; moving to 7.2.1 requires a
+separate installation or a board-specific image-based OTA payload.
+
+Preview the package changes first, then run the upgrade as root:
+
+```bash
+./upgrade-jetpack.sh --dry-run
+sudo ./upgrade-jetpack.sh
+```
+
+The upgrade backs up APT settings and the installed-package list under
+`/var/backups`, stops this project's server, and reboots after success. Use
+`--no-reboot` to reboot manually. Keep an independent backup of important data;
+the configuration backup is not a full-system backup. See NVIDIA's
+[in-place upgrade instructions](https://docs.nvidia.com/jetson/agx-thor-devkit/user-guide/latest/setup_bsp.html#bsp-upgrade).
+
 ## Start
 
 Make the scripts executable once:
