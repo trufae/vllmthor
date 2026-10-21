@@ -10,6 +10,7 @@
 #   MODEL_PROFILE=glm45air ./clean.sh
 #   MODEL_PROFILE=gemma4 ./clean.sh
 #   MODEL_PROFILE=glm47flash ./clean.sh
+#   MODEL_PROFILE=lfm25 ./clean.sh
 #   MODEL_PROFILE=muse ./clean.sh
 #
 # The Hugging Face Xet cache is shared between repositories. It is removed by
@@ -69,6 +70,12 @@ case "$MODEL_PROFILE" in
 		DEFAULT_DRAFT_MODEL=""
 		DEFAULT_CONTAINER_NAME="glm47flash-vllm"
 		;;
+	lfm25)
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_MODEL="LiquidAI/LFM2.5-24B-A2B-FP8"
+		DEFAULT_DRAFT_MODEL=""
+		DEFAULT_CONTAINER_NAME="lfm25-vllm"
+		;;
 	muse)
 		DEFAULT_SERVER_IMAGE="ghcr.io/nvidia-ai-iot/llama_cpp:latest-jetson-thor"
 		DEFAULT_MODEL="meta-models/Muse-Glimmer-30B-GGUF"
@@ -77,7 +84,7 @@ case "$MODEL_PROFILE" in
 		;;
 	*)
 		echo "Unknown MODEL_PROFILE: $MODEL_PROFILE" >&2
-		echo "Expected one of: qwen, qwen36, ornith, nemotron, nemotron35, glm45air, gemma4, glm47flash, muse" >&2
+		echo "Expected one of: qwen, qwen36, ornith, nemotron, nemotron35, glm45air, gemma4, glm47flash, lfm25, muse" >&2
 		exit 1
 		;;
 esac

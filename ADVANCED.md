@@ -38,6 +38,7 @@ variables override that profile's defaults:
 | `HF_TOKEN` | empty | Optional Hugging Face access token |
 | `CONTAINER_NAME` | profile-specific | Docker container name |
 | `MUSE_MODEL_FILE` | `Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf` | Muse GGUF target selected by llama.cpp |
+| `LFM25_SPECULATIVE_CONFIG` | unset | Optional vLLM speculative-decoding JSON for LFM2.5 |
 
 The table shows the default Qwen3.8 values. Each wrapper selects its own model,
 draft, image, context, concurrency, memory fraction, and container name before
@@ -341,6 +342,57 @@ MAX_MODEL_LEN=65536 MAX_CONCURRENT_REQUESTS=2 ./run-nemotron.sh
 Its tool-call parser is a Python plugin shipped in the model repository rather
 than the Qwen parser.
 
+### LFM2.5 24B-A2B
+
+This is Liquid AI's largest LFM2.5 MoE checkpoint, post-trained for agentic
+workloads: 24.0B total parameters, 2.45B active per token, and a 131,072-token
+context window. It is a reasoning-only model and always emits a thinking trace
+before its answer. All experts remain resident, so its memory requirement
+follows the full model size even though decode compute follows the smaller
+active-parameter count. The profile uses Liquid AI's official block-quantized
+W8A8 FP8 checkpoint, a roughly 24.8 GB download. FP8 halves the weight traffic
+and storage compared with the 48.0 GB BF16 checkpoint while retaining BF16 for
+layers excluded from quantization.
+
+```bash
+./run-lfm25.sh
+```
+
+The profile follows the official vLLM recipe with compressed-tensors kernel
+selection, the Qwen3 reasoning parser, and native `lfm2` tool-call parser. vLLM
+selects the FP8 linear and MoE kernels at load time rather than pinning a
+Hopper-only backend on Thor's Blackwell GPU. On Thor it defaults to four active
+sequences, an 8,192-token scheduler budget, and 40% GPU-memory utilization.
+That leaves room for the FP8 weights, KV cache, and runtime allocations while
+retaining most unified memory for the OS. For a single interactive client,
+reduce the active slots:
+
+```bash
+MAX_CONCURRENT_REQUESTS=1 ./run-lfm25.sh
+```
+
+Liquid AI recommends `temperature=0.1`, `top_k=50`, and
+`repetition_penalty=1.05` per request. Those sampling values are deliberately
+not server defaults, so clients remain free to select greedy or task-specific
+sampling.
+
+Liquid AI lists an LFM2.5 24B DSpark draft as coming soon, and no compatible
+EAGLE checkpoint is currently published. Both approaches require a draft
+trained for this exact verifier, so the profile does not pair the 24B target
+with an unrelated draft. Target-only n-gram speculation is available for
+repetitive prompts and code workloads without another checkpoint:
+
+```bash
+LFM25_SPECULATIVE_CONFIG='{"method":"ngram","num_speculative_tokens":3,"prompt_lookup_min":2,"prompt_lookup_max":5}' \
+./run-lfm25.sh
+```
+
+N-gram acceptance is workload-dependent, so benchmark it before making it a
+default. The same variable can accept a DSpark or EAGLE vLLM configuration once
+a verifier-specific checkpoint is published and tested. Treat the entire
+profile as experimental because this new checkpoint has not been validated on
+Jetson AGX Thor.
+
 ### Nemotron 3.5 Lightning
 
 This profile follows NVIDIA's Jetson recipe: NVFP4 target, matching DSpark
@@ -507,6 +559,8 @@ du -sh "${HF_CACHE:-$HOME/.cache/huggingface}"
 - [Ornith 1.5 35B-A3B NVFP4](https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B-NVFP4)
 - [Ornith 1.5 35B-A3B DFlash draft](https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B-DFlash)
 - [NVIDIA Nemotron Nano 9B v2 NVFP4](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2-NVFP4)
+- [Liquid AI LFM2.5 24B-A2B](https://huggingface.co/LiquidAI/LFM2.5-24B-A2B)
+- [Liquid AI LFM2.5 24B-A2B FP8](https://huggingface.co/LiquidAI/LFM2.5-24B-A2B-FP8)
 - [NVIDIA Nemotron 3.5 Lightning NVFP4](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4)
 - [NVIDIA Jetson reasoning-model deployment guide](https://developer.nvidia.com/blog/frontier-reasoning-reaches-the-edge-how-to-deploy-and-optimize-models-on-nvidia-jetson/)
 - [Jetson AI Lab Gemma 4 recipe](https://github.com/NVIDIA-AI-IOT/jetson-ai-lab/blob/main/src/content/models/gemma4-26b-a4b.md)
@@ -521,6 +575,6 @@ du -sh "${HF_CACHE:-$HOME/.cache/huggingface}"
 - [Prism ML Bonsai demo and runtime matrix](https://github.com/PrismML-Eng/Bonsai-demo)
 - [Experimental Bonsai 2 vLLM plugin](https://github.com/wonder-dot-ai/bonsai2-vllm-plugin)
 
-Model cards and runtime flags were last checked on 2026-10-05. Recheck the
-linked source before downloading a large checkpoint after upgrading vLLM or
-JetPack.
+Model cards and runtime flags were last checked on 2026-10-05; the LFM2.5 24B
+profile was checked on 2026-10-17. Recheck the linked source before downloading
+a large checkpoint after upgrading vLLM or JetPack.

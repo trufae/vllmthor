@@ -18,13 +18,15 @@ The default is Qwen3.8-27B with DFlash2 speculative decoding.
 | `./run-nemotron.sh` | Nemotron Nano 9B v2 NVFP4 | **7.85 GB** | **30 tok/s** |
 | `./run-nemotron-lightning.sh` | Nemotron 3.5 Lightning NVFP4 + DSpark | **23.0 GB** | **123.01–138.02 tok/s** |
 | `./run-gemma4.sh` | Gemma 4 26B-A4B NVFP4 + MTP | **17.3 GB** | **50 tok/s** c1; **180 tok/s** aggregate c8 |
+| `./run-lfm25.sh` | LFM2.5 24B-A2B FP8 | **24.8 GB** | Not published for Thor |
 | `./run-muse-glimmer.sh` | Muse Glimmer 30B K-Quant + DFlash | **19.8 GB** | **up to 36 tok/s** |
 | `./run-glm47flash.sh` | GLM-4.7-Flash 30B-A3B NVFP4 | **20.5 GB** | Not published for Thor |
 | `./run-glm45air.sh` | GLM-4.5-Air NVFP4 | **62 GB** | Not published for Thor |
 
-The Ornith and GLM profiles are experimental because their exact checkpoints
-have not been validated or benchmarked on Jetson Thor. Published speeds come
-from different workloads and are not a controlled head-to-head comparison.
+The Ornith, LFM2.5, and GLM profiles are experimental because their exact
+checkpoints have not been validated or benchmarked on Jetson Thor. Published
+speeds come from different workloads and are not a controlled head-to-head
+comparison.
 
 Bonsai 2 is not listed as a launcher yet because its custom CUDA runtimes have
 not been validated on Linux ARM64/Jetson Thor. See the
@@ -53,7 +55,7 @@ docker info | grep -i nvidia
 Make the scripts executable once:
 
 ```bash
-chmod +x run*.sh clean.sh bench.sh
+chmod +x run*.sh clean.sh bench.sh list-models.sh
 ```
 
 Start the default model:
@@ -66,6 +68,7 @@ Or select another model from the table, for example:
 
 ```bash
 ./run-gemma4.sh
+./run-lfm25.sh
 ./run-ornith.sh
 ./run-muse-glimmer.sh
 ./run-glm47flash.sh
@@ -153,6 +156,18 @@ All available overrides and model-specific recommendations are in
 ## Clean
 
 `Ctrl-C` stops the server but keeps the image and model for the next run.
+List every downloaded model, largest first, before deciding what to remove:
+
+```bash
+./list-models.sh
+```
+
+When models are stored on NVMe, point the listing at the same cache:
+
+```bash
+HF_CACHE=/mnt/nvme/huggingface ./list-models.sh
+```
+
 Remove everything created for the default profile with:
 
 ```bash
@@ -167,6 +182,7 @@ MODEL_PROFILE=ornith ./clean.sh
 MODEL_PROFILE=nemotron ./clean.sh
 MODEL_PROFILE=nemotron35 ./clean.sh
 MODEL_PROFILE=gemma4 ./clean.sh
+MODEL_PROFILE=lfm25 ./clean.sh
 MODEL_PROFILE=muse ./clean.sh
 MODEL_PROFILE=glm47flash ./clean.sh
 MODEL_PROFILE=glm45air ./clean.sh

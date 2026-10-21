@@ -11,6 +11,7 @@
 #   glm45air   GLM-4.5-Air NVFP4 (experimental on Thor)
 #   gemma4     Gemma 4 26B-A4B NVFP4 + MTP
 #   glm47flash GLM-4.7-Flash NVFP4 (experimental on Thor)
+#   lfm25      LFM2.5 24B-A2B FP8 (experimental on Thor)
 #   muse       Muse Glimmer 30B K-Quant + DFlash (llama.cpp)
 #
 # The profile wrappers are the easiest entry points:
@@ -22,6 +23,7 @@
 #   ./run-glm45air.sh
 #   ./run-gemma4.sh
 #   ./run-glm47flash.sh
+#   ./run-lfm25.sh
 #   ./run-muse-glimmer.sh
 
 set -euo pipefail
@@ -133,6 +135,19 @@ case "$MODEL_PROFILE" in
 		DEFAULT_CONTAINER_NAME="glm47flash-vllm"
 		PROFILE_TITLE="GLM-4.7-Flash NVFP4 (experimental)"
 		;;
+	lfm25)
+		DEFAULT_SERVER_IMAGE="vllm/vllm-openai:v0.28.0"
+		DEFAULT_ENGINE="vllm"
+		DEFAULT_MODEL="LiquidAI/LFM2.5-24B-A2B-FP8"
+		DEFAULT_DRAFT_MODEL=""
+		DEFAULT_SERVED_MODEL="lfm25"
+		DEFAULT_MAX_MODEL_LEN="131072"
+		DEFAULT_GPU_MEMORY_UTILIZATION="0.40"
+		DEFAULT_MAX_NUM_SEQS="4"
+		DEFAULT_MAX_NUM_BATCHED_TOKENS="8192"
+		DEFAULT_CONTAINER_NAME="lfm25-vllm"
+		PROFILE_TITLE="LFM2.5 24B-A2B FP8 (experimental)"
+		;;
 	muse)
 		DEFAULT_SERVER_IMAGE="ghcr.io/nvidia-ai-iot/llama_cpp:latest-jetson-thor"
 		DEFAULT_ENGINE="llama.cpp"
@@ -148,7 +163,7 @@ case "$MODEL_PROFILE" in
 		;;
 	*)
 		echo "Unknown MODEL_PROFILE: $MODEL_PROFILE" >&2
-		echo "Expected one of: qwen, qwen36, ornith, nemotron, nemotron35, glm45air, gemma4, glm47flash, muse" >&2
+		echo "Expected one of: qwen, qwen36, ornith, nemotron, nemotron35, glm45air, gemma4, glm47flash, lfm25, muse" >&2
 		exit 1
 		;;
 esac
@@ -325,6 +340,26 @@ case "$MODEL_PROFILE" in
 			--speculative-config
 			'{"method":"mtp","num_speculative_tokens":1}'
 		)
+		;;
+	lfm25)
+		# Use Liquid AI's block-quantized W8A8 checkpoint. vLLM selects the best
+		# compressed-tensors kernels for Hopper or Blackwell at load time. The
+		# qwen3 reasoning parser extracts <think> blocks, while the LFM2 parser
+		# converts Pythonic function calls into OpenAI-compatible tool_calls.
+		model_args+=(
+			--dtype auto
+			--quantization compressed-tensors
+			--reasoning-parser qwen3
+			--enable-auto-tool-choice
+			--tool-call-parser lfm2
+		)
+		# No verifier-specific DSpark or EAGLE checkpoint exists for this model
+		# yet. This opt-in accepts target-only n-gram speculation now and a
+		# compatible trained draft later without baking an unverified pairing
+		# into the profile.
+		if [ -n "${LFM25_SPECULATIVE_CONFIG:-}" ]; then
+			model_args+=(--speculative-config "$LFM25_SPECULATIVE_CONFIG")
+		fi
 		;;
 	muse)
 		# Muse is started below with NVIDIA's Thor llama.cpp container.
